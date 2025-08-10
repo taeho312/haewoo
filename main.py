@@ -251,6 +251,7 @@ HELP_OVERRIDES = {
     "합계":   "체력값 시트의 대선(G2), 사련(I2) 값을 불러옵니다. 예) !합계",
     "구매":   "명단 시트에서 B열의 이름을 찾아 같은 행 F열 물품목록에 아이템을 추가(콤마 누적)합니다. 예) !구매 홍길동 붕대",
     "사용":   "명단 시트에서 B열의 이름을 찾아 같은 행 F열에서 해당 아이템 1개를 제거합니다. 예) !사용 홍길동 붕대",
+    "전체":   "!전체 +수치 / -수치 → 체력값 시트 D6부터 마지막 데이터 행까지 숫자 셀에 수치만큼 일괄 증감합니다. 예) !전체 +5, !전체 -3",
     "추가":   "체력값 시트에서 B열의 이름을 찾아 같은 행 D열(체력값)에 수치만큼 더합니다. 예) !추가 홍길동 5",
     "차감":   "체력값 시트에서 B열의 이름을 찾아 같은 행 D열(체력값)에서 수치만큼 뺍니다. 예) !차감 홍길동 5",
     "접속":   "현재 봇이 정상 작동 중인지 확인합니다.",
@@ -259,7 +260,7 @@ HELP_OVERRIDES = {
 }
 
 # 표기 순서 고정
-HELP_ORDER = ["도움말", "시트테스트", "합계", "구매", "사용", "추가", "차감", "접속", "다이스", "전투"]
+HELP_ORDER = ["도움말", "시트테스트", "합계", "구매", "사용", "전체", "추가", "차감", "접속", "다이스", "전투"]
 
 @bot.command(name="도움말")
 async def 도움말(ctx):
@@ -281,6 +282,64 @@ async def 도움말(ctx):
         lines.append(f"**!{name}** — {desc}")
 
     await ctx.send("\n".join(lines))
+
+@bot.command(
+    name="전체",
+    help="!전체 +수치 / -수치 → 체력값 시트 D6부터 마지막 데이터 행까지 숫자 셀에 수치만큼 일괄 증감합니다. 예) !전체 +5, !전체 -3"
+)
+async def 전체(ctx, 수치: str):
+    s = (수치 or "").strip()
+    if not (s.startswith("+") or s.startswith("-")):
+        await ctx.send("⚠️ 수치는 + 또는 -로 시작해야 합니다. 예) `!전체 +5` 또는 `!전체 -3`")
+        return
+    try:
+        delta = int(s)
+    except ValueError:
+        await ctx.send("⚠️ 수치는 정수여야 합니다. 예) `!전체 +5` 또는 `!전체 -3`")
+        return
+
+    try:
+        sh = ws("체력값")
+
+        # 마지막 행 계산 (D열에서)
+        col_d = sh.col_values(4)  # D열 전체 값
+        last_row = len(col_d)
+        if last_row < 6:
+            await ctx.send("⚠️ D6 이후 데이터가 없습니다.")
+            return
+
+        rng = f"D6:D{last_row}"
+        rows = sh.get(rng)
+        new_rows, changed = [], 0
+
+        for r in rows:
+            raw = (r[0] if r else "").strip()
+            if raw == "":
+                new_rows.append([raw])  # 빈칸 유지
+                continue
+            try:
+                cur = int(raw)
+                new_rows.append([cur + delta])
+                changed += 1
+            except ValueError:
+                new_rows.append([raw])  # 숫자 아님 → 유지
+
+        # 시트 업데이트
+        sh.update(rng, new_rows, value_input_option="USER_ENTERED")
+
+        # 최종 수정자 닉네임 기록 (D2)
+        sh.update_acell("D2", ctx.author.display_name)
+
+        # 결과 메시지 + 타임스탬프
+        sign = "+" if delta >= 0 else ""
+        timestamp = now_kst_str()
+        await ctx.send(
+            f"✅ 전체 체력값에 적용 완료했습니다.\n{timestamp}"
+        )
+
+    except Exception as e:
+        await ctx.send(f"❌ 일괄 증감 실패: {e}")
+
 
 # ✅ 전투 기능 시작
 active_battles = {}
