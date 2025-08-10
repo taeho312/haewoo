@@ -219,4 +219,44 @@ async def 차감(ctx, 이름: str, 수치: str):
 
     await ctx.send(f"✅ '{이름}' 체력값 {cur_val} → -{abs(delta)} = **{new_val}** (행 {row}, D열)")
 
+# ====== 도움말: 고정 순서/설명으로 보기 좋게 출력 ======
+
+# 기본 help 제거 (중복 방지)
+bot.remove_command("help")
+
+# 도움말 표기 고정(오버라이드) 사전
+HELP_OVERRIDES = {
+    "도움말":  "현재 사용 가능한 명령어 목록을 표시합니다.",
+    "시트테스트": "연결 확인 시트의 A1에 현재 시간을 기록하고 값을 확인합니다. 예) !시트테스트",
+    "합계":   "체력값 시트의 대선(G2), 수련(I2) 값을 불러옵니다. 예) !합계",
+    "구매":   "명단 시트에서 B열의 이름을 찾아 같은 행 F열 물품목록에 아이템을 추가(콤마 누적)합니다. 예) !구매 홍길동 붕대",
+    "사용":   "명단 시트에서 B열의 이름을 찾아 같은 행 F열에서 해당 아이템 1개를 제거합니다. 예) !사용 홍길동 붕대",
+    "추가":   "체력값 시트에서 B열의 이름을 찾아 같은 행 D열(체력값)에 수치만큼 더합니다. 예) !추가 대선 5",
+    "차감":   "체력값 시트에서 B열의 이름을 찾아 같은 행 D열(체력값)에서 수치만큼 뺍니다. 예) !차감 대선 5",
+}
+
+# 표기 순서 고정
+HELP_ORDER = ["도움말", "시트테스트", "합계", "구매", "사용", "추가", "차감"]
+
+@bot.command(name="도움말")
+async def 도움말(ctx):
+    # 현재 로드된 커맨드들
+    loaded = {cmd.name: cmd for cmd in bot.commands if not cmd.hidden}
+
+    # 우선 순서대로 정리 + 로드되지 않은 항목은 건너뜀
+    lines = ["📜 **사용 가능한 명령어**\n"]
+    for name in HELP_ORDER:
+        if name in loaded:
+            desc = HELP_OVERRIDES.get(name) or (loaded[name].help or "설명 없음")
+            lines.append(f"**!{name}** — {desc}")
+
+    # HELP_ORDER에 없지만 로드된 커맨드가 더 있다면 뒤에 추가
+    for name, cmd in sorted(loaded.items()):
+        if name in HELP_ORDER:
+            continue
+        desc = HELP_OVERRIDES.get(name) or (cmd.help or "설명 없음")
+        lines.append(f"**!{name}** — {desc}")
+
+    await ctx.send("\n".join(lines))
+
 bot.run(DISCORD_TOKEN)
