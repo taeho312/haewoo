@@ -122,10 +122,11 @@ def _normalize_items_str(s: str | None) -> str:
 async def 구매(ctx, 이름: str, *, 물품명: str):
     """[명단!A열 이름]의 F열(물품목록)에 물품을 콤마로 누적"""
     try:
+        timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
         sh = ws("명단")
         row = _find_row_by_name(sh, 이름)
         if not row:
-            timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
+            
             await ctx.send(f"❌ '{이름}' 이름을 A열에서 찾지 못했습니다.\n{timestamp}")
             return
 
