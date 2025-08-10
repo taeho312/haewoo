@@ -260,4 +260,262 @@ async def 도움말(ctx):
 
     await ctx.send("\n".join(lines))
 
+# ✅ 전투 기능 시작
+active_battles = {}
+
+def get_hp_bar(current, max_hp=50, bar_length=10):
+    filled_length = int(bar_length * max(current, 0) / max_hp)
+    bar = '█' * filled_length + '░' * (bar_length - filled_length)
+    return f"[{bar}] {max(current, 0)}/{max_hp}"
+
+class BattleAttackButton(Button):
+    def __init__(self, channel_id):
+        super().__init__(label="공격", style=discord.ButtonStyle.danger)
+        self.channel_id = channel_id
+
+    async def callback(self, interaction: discord.Interaction):
+        data = active_battles[self.channel_id]
+        if data["단계"] != "공격":
+            await interaction.response.send_message("지금은 공격할 수 없습니다.", ephemeral=False)
+            return
+
+        attacker = data["턴"]
+        defender = data["상대"]
+
+        # 공격 주사위 4개 (1D6 × 4)
+        rolls = [random.randint(1, 6) for _ in range(4)]
+        total_attack = sum(rolls)
+        dice_text = " + ".join(str(r) for r in rolls)
+
+        data["최근공격"] = total_attack
+        data["공격자"] = attacker
+        data["방어자"] = defender
+        data["단계"] = "방어"
+
+        hp1 = get_hp_bar(data["체력"][data["플레이어1"]])
+        hp2 = get_hp_bar(data["체력"][data["플레이어2"]])
+        timestamp = datetime.now(KST).strftime("%Y/%m/%d %H:%M:%S")
+
+        msg = (
+            f"{attacker}의 공격 차례입니다.\n"
+            f"공격 {dice_text} → 총 {total_attack}\n\n"
+            f"{defender}의 방어 차례입니다.\n\n"
+            f"{data['플레이어1']}: {hp1}\n"
+            f"{data['플레이어2']}: {hp2}\n"
+            f"{timestamp}"
+        )
+        await interaction.channel.send(msg, view=BattleView(self.channel_id))
+        await interaction.response.defer()
+
+class BattleDefendButton(Button):
+    def __init__(self, channel_id):
+        super().__init__(label="방어", style=discord.ButtonStyle.primary)
+        self.channel_id = channel_id
+
+    async def callback(self, interaction: discord.Interaction):
+        data = active_battles[self.channel_id]
+        if data["단계"] != "방어":
+            await interaction.response.send_message("지금은 방어할 수 없습니다.", ephemeral=False)
+            return
+
+        defender = data["방어자"]
+        attacker = data["공격자"]
+        last_dmg = data.get("최근공격", 0)
+
+        # 방어 주사위 2개 (1D6 × 2)
+        rolls = [random.randint(1, 6) for _ in range(2)]
+        defense = sum(rolls)
+        net_dmg = max(0, last_dmg - defense)
+        data["체력"][defender] -= net_dmg
+
+        dice_text = " + ".join(str(r) for r in rolls)
+
+        hp1_val = data["체력"][data["플레이어1"]]
+        hp2_val = data["체력"][data["플레이어2"]]
+        hp1 = get_hp_bar(hp1_val)
+        hp2 = get_hp_bar(hp2_val)
+        timestamp = datetime.now(KST).strftime("%Y/%m/%d %H:%M:%S")
+
+        # 방어 후 체력 0 이하인 경우
+        if data["체력"][defender] <= 0:
+            if not data.get("최종반격", False) and defender == data["후공"]:
+                # 후공만 최종 반격 1회 부여
+                data["최종반격"] = True
+                data["턴"], data["상대"] = defender, attacker
+                data["단계"] = "공격"
+
+                msg = (
+                    f"{defender}의 방어 차례입니다.\n"
+                    f"방어 {dice_text} - 누적 데미지 {last_dmg}\n"
+                    f"{defender}의 체력이 0이 되었지만, 마지막 반격 기회를 얻습니다.\n\n"
+                    f"{defender}의 마지막 공격 차례입니다.\n\n"
+                    f"{data['플레이어1']}: {hp1}\n"
+                    f"{data['플레이어2']}: {hp2}\n"
+                    f"{timestamp}"
+                )
+                await interaction.channel.send(msg, view=BattleView(self.channel_id))
+                await interaction.response.defer()
+                return
+            else:
+                # 반격 없음 또는 (선공 사망 등) → 즉시 종료 (공격자 승)
+                msg = (
+                    f"{defender}의 방어 차례입니다.\n"
+                    f"방어 {dice_text} - 누적 데미지 {last_dmg}\n"
+                    f"{defender}의 체력이 0이 되었습니다.\n\n"
+                    f"전투가 종료되었습니다. {attacker}의 승리입니다.\n"
+                    f"{data['플레이어1']}: {hp1}\n"
+                    f"{data['플레이어2']}: {hp2}\n"
+                    f"{timestamp}"
+                )
+                await interaction.channel.send(msg)
+                await interaction.response.defer()
+                del active_battles[self.channel_id]
+                return
+
+        result_line = (
+            f"방어 {dice_text} - 누적 데미지 {last_dmg} → 총 {net_dmg}"
+            if net_dmg > 0 else
+            f"방어 {dice_text} - 누적 데미지 {last_dmg} → 완전 방어에 성공합니다."
+        )
+
+        # 최종 반격이 진행 중이었다면(= 이번 방어가 선공의 방어) → 여기서 체력 비교로 종료
+        if data.get("최종반격", False):
+            # 강제 종료 규칙과 동일한 비교식 사용
+            if hp1_val <= 0 and hp2_val > 0:
+                winner = data["플레이어2"]
+            elif hp2_val <= 0 and hp1_val > 0:
+                winner = data["플레이어1"]
+            elif hp1_val <= 0 and hp2_val <= 0:
+                # 둘 다 0 이하면 0에 가까운 쪽 승리 (값이 더 큰 쪽)
+                if hp1_val > hp2_val:
+                    winner = data["플레이어1"]
+                elif hp2_val > hp1_val:
+                    winner = data["플레이어2"]
+                else:
+                    winner = None
+            else:
+                # 둘 다 양수면 높은 체력 승
+                if hp1_val > hp2_val:
+                    winner = data["플레이어1"]
+                elif hp2_val > hp1_val:
+                    winner = data["플레이어2"]
+                else:
+                    winner = None
+
+            result = f"전투가 종료되었습니다. {winner}의 승리입니다." if winner else "전투가 종료되었습니다. 무승부입니다."
+
+            msg = (
+                f"{defender}의 방어 차례입니다.\n"
+                f"{result_line}\n\n"
+                f"{result}\n"
+                f"{data['플레이어1']}: {hp1}\n"
+                f"{data['플레이어2']}: {hp2}\n"
+                f"{timestamp}"
+            )
+            await interaction.channel.send(msg)
+            await interaction.response.defer()
+            del active_battles[self.channel_id]
+            return
+
+        # 일반 턴 전환
+        data["턴"], data["상대"] = defender, attacker
+        data["단계"] = "공격"
+
+        msg = (
+            f"{defender}의 방어 차례입니다.\n"
+            f"{result_line}\n\n"
+            f"{defender}의 공격 차례입니다.\n\n"
+            f"{data['플레이어1']}: {hp1}\n"
+            f"{data['플레이어2']}: {hp2}\n"
+            f"{timestamp}"
+        )
+        await interaction.channel.send(msg, view=BattleView(self.channel_id))
+        await interaction.response.defer()
+
+class BattleEndButton(Button):
+    def __init__(self, channel_id):
+        super().__init__(label="종료", style=discord.ButtonStyle.secondary)
+        self.channel_id = channel_id
+
+    async def callback(self, interaction: discord.Interaction):
+        data = active_battles.get(self.channel_id)
+        if not data:
+            await interaction.response.send_message("종료할 전투가 없습니다.", ephemeral=False)
+            return
+
+        hp1_val = data["체력"][data["플레이어1"]]
+        hp2_val = data["체력"][data["플레이어2"]]
+        hp1_bar = get_hp_bar(hp1_val)
+        hp2_bar = get_hp_bar(hp2_val)
+        timestamp = datetime.now(KST).strftime("%Y/%m/%d %H:%M:%S")
+
+        # 강제 종료 승패 규칙
+        if hp1_val <= 0 and hp2_val > 0:
+            result = f"{data['플레이어2']}의 승리입니다."
+        elif hp2_val <= 0 and hp1_val > 0:
+            result = f"{data['플레이어1']}의 승리입니다."
+        elif hp1_val <= 0 and hp2_val <= 0:
+            # 둘 다 0 이하 → 0에 가까운 쪽 승리 (값이 더 큰 쪽)
+            if hp1_val > hp2_val:
+                result = f"{data['플레이어1']}의 승리입니다."
+            elif hp2_val > hp1_val:
+                result = f"{data['플레이어2']}의 승리입니다."
+            else:
+                result = "무승부입니다."
+        else:
+            # 둘 다 양수 → 높은 체력 승
+            if hp1_val > hp2_val:
+                result = f"{data['플레이어1']}의 승리입니다."
+            elif hp2_val > hp1_val:
+                result = f"{data['플레이어2']}의 승리입니다."
+            else:
+                result = "무승부입니다."
+
+        msg = (
+            f"전투가 강제로 종료되었습니다.\n\n"
+            f"{data['플레이어1']}: {hp1_bar}\n"
+            f"{data['플레이어2']}: {hp2_bar}\n\n"
+            f"{result}\n"
+            f"{timestamp}"
+        )
+        await interaction.channel.send(msg)
+        await interaction.response.defer()
+        del active_battles[self.channel_id]
+
+class BattleView(View):
+    def __init__(self, channel_id):
+        super().__init__(timeout=None)
+        self.channel_id = channel_id
+        self.add_item(BattleAttackButton(channel_id))
+        self.add_item(BattleDefendButton(channel_id))
+        self.add_item(BattleEndButton(channel_id))
+
+@bot.command()
+async def 전투(ctx, 플레이어1: str, 플레이어2: str):
+    channel_id = ctx.channel.id
+    if channel_id in active_battles:
+        await ctx.send("이미 이 채널에서 전투가 진행 중입니다.")
+        return
+
+    first = random.choice([플레이어1, 플레이어2])
+    second = 플레이어2 if first == 플레이어1 else 플레이어1
+
+    active_battles[channel_id] = {
+        "플레이어1": 플레이어1,
+        "플레이어2": 플레이어2,
+        "체력": {플레이어1: 50, 플레이어2: 50},
+        "단계": "공격",
+        "턴": first,
+        "상대": second,
+        "최종반격": False,
+        "선공": first,
+        "후공": second
+    }
+
+    await ctx.send(
+        f"전투를 준비합니다.\n{플레이어1} vs {플레이어2}\n선공: {first}\n\n{first}, 공격을 시작하세요.",
+        view=BattleView(channel_id)
+    )
+# ✅ 전투 기능 끝
+
 bot.run(DISCORD_TOKEN)
