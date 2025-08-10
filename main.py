@@ -151,4 +151,95 @@ async def 사용(ctx, 이름: str, *, 물품명: str):
     except Exception as e:
         await ctx.send(f"❌ 사용 처리 실패: {e}")
 
+# ====== 체력 증감 공통 유틸 ======
+
+def _find_row_in_colB(sh, name: str):
+    """B열에서 이름 정확 일치 행 번호 반환 (없으면 None)"""
+    colB = sh.col_values(2)
+    target = (name or "").strip()
+    for idx, val in enumerate(colB, start=1):
+        if (val or "").strip() == target:
+            return idx
+    return None
+
+def _read_hp_D(sh, row: int) -> int:
+    """해당 행의 D열(체력값) 정수 읽기 (비정상/공백은 0)"""
+    raw = (sh.cell(row, 4).value or "0").strip()
+    try:
+        return int(raw)
+    except ValueError:
+        return 0
+
+def _write_hp_D(sh, row: int, value: int):
+    """해당 행의 D열 값 쓰기"""
+    sh.update_cell(row, 4, value)
+
+def _apply_delta_to_hp(name: str, delta: int):
+    """
+    '체력값' 시트에서 이름(B열) 찾아, 같은 행 D열에 delta만큼 반영.
+    반환: (row, cur_val, new_val)
+    """
+    sh = ws("체력값")
+    row = _find_row_in_colB(sh, name)
+    if not row:
+        return None, None, None
+    cur_val = _read_hp_D(sh, row)
+    new_val = cur_val + delta
+    _write_hp_D(sh, row, new_val)
+    return row, cur_val, new_val
+
+def _parse_delta_for_add(s: str):
+    """
+    !추가 수치 파싱: '+5' 또는 '-3' 형태만 허용.
+    """
+    s = (s or "").strip()
+    if not (s.startswith("+") or s.startswith("-")):
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        return None
+
+def _parse_delta_for_sub(s: str):
+    """
+    !차감 수치 파싱: '5', '+5', '-5' 모두 허용 → 항상 감소(-abs)
+    """
+    s = (s or "").strip().lstrip("+")
+    try:
+        n = int(s)
+    except ValueError:
+        return None
+    return -abs(n)
+
+# ====== 명령어: !추가 / !차감 ======
+
+@bot.command(name="추가", help="!추가 이름 +숫자 → B열의 해당 이름 행 D열(체력값)에 +숫자만큼 증감합니다. 예: !추가 대선 +5, !추가 수련 -3")
+async def 추가(ctx, 이름: str, 수치: str):
+    delta = _parse_delta_for_add(수치)
+    if delta is None:
+        await ctx.send("⚠️ 수치는 +또는 -로 시작해야 합니다. 예) `!추가 대선 +5` 또는 `!추가 수련 -3`")
+        return
+
+    row, cur_val, new_val = _apply_delta_to_hp(이름, delta)
+    if row is None:
+        await ctx.send(f"❌ '체력값' 시트 B열에서 '{이름}'을 찾지 못했습니다.")
+        return
+
+    sign = "+" if delta >= 0 else ""
+    await ctx.send(f"✅ '{이름}' 체력값 {cur_val} → {sign}{delta} = **{new_val}** (행 {row}, D열)")
+
+@bot.command(name="차감", help="!차감 이름 수치 → B열의 해당 이름 행 D열(체력값)에서 수치만큼 감소. 예: !차감 대선 5")
+async def 차감(ctx, 이름: str, 수치: str):
+    delta = _parse_delta_for_sub(수치)
+    if delta is None:
+        await ctx.send("⚠️ 수치는 정수여야 합니다. 예) `!차감 수련 3` 또는 `!차감 수련 +3`")
+        return
+
+    row, cur_val, new_val = _apply_delta_to_hp(이름, delta)
+    if row is None:
+        await ctx.send(f"❌ '체력값' 시트 B열에서 '{이름}'을 찾지 못했습니다.")
+        return
+
+    await ctx.send(f"✅ '{이름}' 체력값 {cur_val} → {delta} = **{new_val}** (행 {row}, D열)")
+
 bot.run(DISCORD_TOKEN)
