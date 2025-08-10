@@ -27,7 +27,6 @@ missing = [k for k, v in {
     "SHEET_KEY": SHEET_KEY
 }.items() if not v]
 if missing:
-    timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
     print(f"❌ 누락된 환경변수: {', '.join(missing)}")
     sys.exit(1)
 
@@ -43,8 +42,7 @@ try:
     gclient = gspread.authorize(creds)
     sheet = gclient.open_by_key(SHEET_KEY).sheet1  # 기본은 1번째 시트
 except Exception as e:
-    timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
-    print("❌ 구글 스프레드시트 인증/접속 실패:", e\n{timestamp})
+    print("❌ 구글 스프레드시트 인증/접속 실패:", e)
     sys.exit(1)
 
 # 🧰 유틸
@@ -58,25 +56,23 @@ DICE_EMOJI = {
 
 @bot.event
 async def on_ready():
-    timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
     print(f'✅ Logged in as {bot.user} ({bot.user.id})')
 
 @bot.command(name="접속", help="현재 봇이 정상 작동 중인지 확인합니다. 만약 봇이 응답하지 않으면 접속 오류입니다. 예) !접속")
 async def 접속(ctx):
     timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
-    await ctx.send('현재 봇이 구동 중입니다.\n{timestamp}')
+    await ctx.send(f"현재 봇이 구동 중입니다.\n{timestamp}")
 
 # ✅ 연결 테스트용 커맨드 (원하면 삭제 가능)
 @bot.command(name="시트테스트", help="연결 확인 시트의 A1에 현재 시간을 기록하고 값을 확인합니다. 예) !시트테스트")
 async def 시트테스트(ctx):
-    timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
     try:
         sh = ws("연결 확인")  # '연결 확인' 시트 핸들러
         sh.update_acell("A1", f"✅ 연결 OK @ {now_kst_str()}")
         val = sh.acell("A1").value
         await ctx.send(f"A1 = {val}")
     except Exception as e:
-        await ctx.send(f"❌ 시트 접근 실패: {e}\n{timestamp}")
+        await ctx.send(f"❌ 시트 접근 실패: {e}")
 
 @bot.command(name="다이스", help="다이스를 굴려 1에서 10까지의 결괏값을 출력합니다. 예) !다이스")
 async def 다이스(ctx):
@@ -92,15 +88,16 @@ def ws(title: str):
 
 @bot.command(name="합계", help="체력값 시트의 대선(G2), 사련(I2) 값을 불러옵니다. 예) !합계")
 async def 합계(ctx):
-    timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
     try:
         sh = ws("체력값")
         v_g2 = sh.acell("G2").value  # 대선
         v_i2 = sh.acell("I2").value  # 사련
+        timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
         await ctx.send(
             f"현재 대선의 체력값은 '{v_g2}', 사련의 체력값은 '{v_i2}'입니다.\n{timestamp}"
         )
     except Exception as e:
+        timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
         await ctx.send(f"❌ 조회 실패: {e}\n{timestamp}")
 
 def _find_row_by_name(worksheet, name: str) -> int | None:
@@ -123,12 +120,12 @@ def _normalize_items_str(s: str | None) -> str:
 
 @bot.command(name="구매")
 async def 구매(ctx, 이름: str, *, 물품명: str):
-    timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
     """[명단!A열 이름]의 F열(물품목록)에 물품을 콤마로 누적"""
     try:
         sh = ws("명단")
         row = _find_row_by_name(sh, 이름)
         if not row:
+            timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
             await ctx.send(f"❌ '{이름}' 이름을 A열에서 찾지 못했습니다.\n{timestamp}")
             return
 
@@ -144,9 +141,9 @@ async def 구매(ctx, 이름: str, *, 물품명: str):
 
 @bot.command(name="사용")
 async def 사용(ctx, 이름: str, *, 물품명: str):
-    timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
     """[명단!A열 이름]의 F열(물품목록)에서 해당 물품 1개 제거 (콤마 정리 포함)"""
     try:
+        timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
         sh = ws("명단")
         row = _find_row_by_name(sh, 이름)
         if not row:
@@ -213,6 +210,7 @@ def _apply_delta_to_hp(name: str, delta: int):
 @bot.command(name="추가", help="!추가 이름 수치 → 기존 체력값에 수치만큼 더합니다. 예: !추가 홍길동 5")
 async def 추가(ctx, 이름: str, 수치: str):
     timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
+    
     if not 수치.isdigit():
         await ctx.send("⚠️ 수치는 양의 정수여야 합니다. 예) `!추가 홍길동 5`\n{timestamp}")
         return
