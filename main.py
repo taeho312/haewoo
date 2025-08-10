@@ -60,23 +60,23 @@ async def on_ready():
 
 @bot.command(name="접속", help="현재 봇이 정상 작동 중인지 확인합니다. 만약 봇이 응답하지 않으면 접속 오류입니다. 예) !접속")
 async def 접속(ctx):
-    await ctx.send('현재 봇이 구동 중입니다.')
+    await ctx.send('현재 봇이 구동 중입니다.'\n{timestamp})
 
 # ✅ 연결 테스트용 커맨드 (원하면 삭제 가능)
 @bot.command(name="시트테스트", help="연결 확인 시트의 A1에 현재 시간을 기록하고 값을 확인합니다. 예) !시트테스트")
 async def 시트테스트(ctx):
     try:
         sh = ws("연결 확인")  # '연결 확인' 시트 핸들러
-        sh.update_acell("A1", f"✅ 연결 OK @ {now_kst_str()}")
+        sh.update_acell("A1", f"✅ 연결 OK @ {now_kst_str()}\n{timestamp}")
         val = sh.acell("A1").value
         await ctx.send(f"A1 = {val}")
     except Exception as e:
-        await ctx.send(f"❌ 시트 접근 실패: {e}")
+        await ctx.send(f"❌ 시트 접근 실패: {e}\n{timestamp}")
 
 @bot.command(name="다이스", help="다이스를 굴려 1에서 10까지의 결괏값을 출력합니다. 예) !다이스")
 async def 다이스(ctx):
     roll = random.randint(1, 10)
-    await ctx.send(f"1D10 결과: **{roll}**")
+    await ctx.send(f"1D10 결과: **{roll}**"\n{timestamp})
 
 # ====== 명령어: !합계 / !구매 / !사용 ======
 
@@ -91,10 +91,10 @@ async def 합계(ctx):
         v_g2 = sh.acell("G2").value  # 대선
         v_i2 = sh.acell("I2").value  # 사련
         await ctx.send(
-            f"현재 대선의 체력값은 '{v_g2}', 사련의 체력값은 '{v_i2}'입니다."
+            f"현재 대선의 체력값은 '{v_g2}', 사련의 체력값은 '{v_i2}'입니다.\n{timestamp}"
         )
     except Exception as e:
-        await ctx.send(f"❌ 조회 실패: {e}")
+        await ctx.send(f"❌ 조회 실패: {e}\n{timestamp}")
 
 def _find_row_by_name(worksheet, name: str) -> int | None:
     # '명단' 시트의 B열에서 정확히 일치하는 첫 행 번호 반환 (없으면 None)
@@ -111,8 +111,8 @@ def _normalize_items_str(s: str | None) -> str:
     # 콤마로 구분된 아이템 문자열 정규화 (공백 제거, 빈 토큰 제거)
     if not s:
         return ""
-    items = [t.strip() for t in s.split(",") if t.strip()]
-    return ",".join(items)
+    items = [t.strip() for t in s.split(", ") if t.strip()]
+    return ", ".join(items)
 
 @bot.command(name="구매")
 async def 구매(ctx, 이름: str, *, 물품명: str):
@@ -121,7 +121,7 @@ async def 구매(ctx, 이름: str, *, 물품명: str):
         sh = ws("명단")
         row = _find_row_by_name(sh, 이름)
         if not row:
-            await ctx.send(f"❌ '{이름}' 이름을 A열에서 찾지 못했습니다.")
+            await ctx.send(f"❌ '{이름}' 이름을 A열에서 찾지 못했습니다.\n{timestamp}")
             return
 
         cur = _normalize_items_str(sh.acell(f"F{row}").value)
@@ -130,9 +130,9 @@ async def 구매(ctx, 이름: str, *, 물품명: str):
         new_val = ",".join([t for t in items if t])  # 공백/빈값 제거
         sh.update_acell(f"F{row}", new_val)
 
-        await ctx.send(f"✅ '{이름}'의 물품 목록 업데이트 완료: {new_val if new_val else '(비어 있음)'}")
+        await ctx.send(f"✅ '{이름}'의 물품 목록 업데이트 완료: {new_val if new_val else '(비어 있음)'}\n{timestamp}")
     except Exception as e:
-        await ctx.send(f"❌ 구매 처리 실패: {e}")
+        await ctx.send(f"❌ 구매 처리 실패: {e}\n{timestamp}")
 
 @bot.command(name="사용")
 async def 사용(ctx, 이름: str, *, 물품명: str):
@@ -141,26 +141,26 @@ async def 사용(ctx, 이름: str, *, 물품명: str):
         sh = ws("명단")
         row = _find_row_by_name(sh, 이름)
         if not row:
-            await ctx.send(f"❌ '{이름}' 이름을 A열에서 찾지 못했습니다.")
+            await ctx.send(f"❌ '{이름}' 이름을 A열에서 찾지 못했습니다.\n{timestamp}")
             return
 
         cur = _normalize_items_str(sh.acell(f"F{row}").value)
         if not cur:
-            await ctx.send(f"⚠️ '{이름}'의 물품 목록이 비어 있습니다.")
+            await ctx.send(f"⚠️ '{이름}'의 물품 목록이 비어 있습니다.\n{timestamp}")
             return
 
         items = cur.split(",")
         try:
             items.remove(물품명.strip())  # 동일 명칭 1회분만 제거
         except ValueError:
-            await ctx.send(f"⚠️ '{이름}'의 목록에 '{물품명}'이 없습니다.")
+            await ctx.send(f"⚠️ '{이름}'의 목록에 '{물품명}'이 없습니다.\n{timestamp}")
             return
 
         new_val = ",".join([t for t in items if t])
         sh.update_acell(f"F{row}", new_val)
-        await ctx.send(f"✅ '{이름}'의 '{물품명}' 사용 처리 완료: {new_val if new_val else '(비어 있음)'}")
+        await ctx.send(f"✅ '{이름}'의 '{물품명}' 사용 처리 완료: {new_val if new_val else '(비어 있음)'}\n{timestamp}")
     except Exception as e:
-        await ctx.send(f"❌ 사용 처리 실패: {e}")
+        await ctx.send(f"❌ 사용 처리 실패: {e}\n{timestamp}")
 
 # ====== 체력 증감 공통 유틸 ======
 
@@ -204,30 +204,30 @@ def _apply_delta_to_hp(name: str, delta: int):
 @bot.command(name="추가", help="!추가 이름 수치 → 기존 체력값에 수치만큼 더합니다. 예: !추가 홍길동 5")
 async def 추가(ctx, 이름: str, 수치: str):
     if not 수치.isdigit():
-        await ctx.send("⚠️ 수치는 양의 정수여야 합니다. 예) `!추가 대선 5`")
+        await ctx.send("⚠️ 수치는 양의 정수여야 합니다. 예) `!추가 홍길동 5`\n{timestamp}")
         return
     delta = int(수치)
 
     row, cur_val, new_val = _apply_delta_to_hp(이름, delta)
     if row is None:
-        await ctx.send(f"❌ '체력값' 시트 B열에서 '{이름}'을 찾지 못했습니다.")
+        await ctx.send(f"❌ '체력값' 시트 B열에서 '{이름}'을 찾지 못했습니다.\n{timestamp}")
         return
 
     await ctx.send(f"✅ '{이름}' 체력값 {cur_val} → +{delta} = **{new_val}** (행 {row}, D열)")
 
-@bot.command(name="차감", help="!차감 이름 수치 → 기존 체력값에서 수치만큼 뺍니다. 예: !차감 홍길동 5")
+@bot.command(name="차감", help="!차감 이름 수치 → 기존 체력값에서 수치만큼 뺍니다. 예: !차감 홍길동 5\n{timestamp}")
 async def 차감(ctx, 이름: str, 수치: str):
     if not 수치.isdigit():
-        await ctx.send("⚠️ 수치는 양의 정수여야 합니다. 예) `!차감 사련 3`")
+        await ctx.send("⚠️ 수치는 양의 정수여야 합니다. 예) `!차감 홍길동 3`\n{timestamp}")
         return
     delta = -int(수치)  # 무조건 감소
 
     row, cur_val, new_val = _apply_delta_to_hp(이름, delta)
     if row is None:
-        await ctx.send(f"❌ '체력값' 시트 B열에서 '{이름}'을 찾지 못했습니다.")
+        await ctx.send(f"❌ '체력값' 시트 B열에서 '{이름}'을 찾지 못했습니다.\n{timestamp}")
         return
 
-    await ctx.send(f"✅ '{이름}' 체력값 {cur_val} → -{abs(delta)} = **{new_val}** (행 {row}, D열)")
+    await ctx.send(f"✅ '{이름}' 체력값 {cur_val} → -{abs(delta)} = **{new_val}** (행 {row}, D열)\n{timestamp}")
 
 # ====== 도움말: 고정 순서/설명으로 보기 좋게 출력 ======
 
