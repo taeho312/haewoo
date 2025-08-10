@@ -61,8 +61,9 @@ async def 접속(ctx):
 @bot.command(name="시트테스트")
 async def 시트테스트(ctx):
     try:
-        sheet.update_acell("A1", f"✅ 연결 OK @ {now_kst_str()}")
-        val = sheet.acell("A1").value
+        sh = ws("연결 확인")  # '연결 확인' 시트 핸들러
+        sh.update_acell("A1", f"✅ 연결 OK @ {now_kst_str()}")
+        val = sh.acell("A1").value
         await ctx.send(f"A1 = {val}")
     except Exception as e:
         await ctx.send(f"❌ 시트 접근 실패: {e}")
