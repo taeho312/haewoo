@@ -88,7 +88,7 @@ async def 합계(ctx):
 def _find_row_by_name(worksheet, name: str) -> int | None:
     # '명단' 시트의 B열에서 정확히 일치하는 첫 행 번호 반환 (없으면 None)
     try:
-        colA = worksheet.col_values(1)
+        colB = worksheet.col_values(2)  # B열 = index 2
         for idx, val in enumerate(colB, start=1):
             if (val or "").strip() == name.strip():
                 return idx
@@ -110,7 +110,7 @@ async def 구매(ctx, 이름: str, *, 물품명: str):
         sh = ws("명단")
         row = _find_row_by_name(sh, 이름)
         if not row:
-            await ctx.send(f"❌ '{이름}' 이름을 B열에서 찾지 못했습니다.")
+            await ctx.send(f"❌ '{이름}' 이름을 A열에서 찾지 못했습니다.")
             return
 
         cur = _normalize_items_str(sh.acell(f"F{row}").value)
