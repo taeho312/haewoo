@@ -80,16 +80,16 @@ async def 합계(ctx):
         v_g2 = sh.acell("G2").value  # 대선
         v_i2 = sh.acell("I2").value  # 수련
         await ctx.send(
-            f"현재 대선의 체력값은 '{v_g2}(체력값:G2)', 수련의 체력값은 '{v_i2}(체력값:I2)'입니다."
+            f"현재 대선의 체력값은 '{v_g2}', 수련의 체력값은 '{v_i2}'입니다."
         )
     except Exception as e:
         await ctx.send(f"❌ 조회 실패: {e}")
 
 def _find_row_by_name(worksheet, name: str) -> int | None:
-    # '명단' 시트의 A열에서 정확히 일치하는 첫 행 번호 반환 (없으면 None)
+    # '명단' 시트의 B열에서 정확히 일치하는 첫 행 번호 반환 (없으면 None)
     try:
         colA = worksheet.col_values(1)
-        for idx, val in enumerate(colA, start=1):
+        for idx, val in enumerate(colB, start=1):
             if (val or "").strip() == name.strip():
                 return idx
         return None
@@ -110,7 +110,7 @@ async def 구매(ctx, 이름: str, *, 물품명: str):
         sh = ws("명단")
         row = _find_row_by_name(sh, 이름)
         if not row:
-            await ctx.send(f"❌ '{이름}' 이름을 A열에서 찾지 못했습니다.")
+            await ctx.send(f"❌ '{이름}' 이름을 B열에서 찾지 못했습니다.")
             return
 
         cur = _normalize_items_str(sh.acell(f"F{row}").value)
