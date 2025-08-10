@@ -188,58 +188,34 @@ def _apply_delta_to_hp(name: str, delta: int):
     _write_hp_D(sh, row, new_val)
     return row, cur_val, new_val
 
-def _parse_delta_for_add(s: str):
-    """
-    !추가 수치 파싱: '+5' 또는 '-3' 형태만 허용.
-    """
-    s = (s or "").strip()
-    if not (s.startswith("+") or s.startswith("-")):
-        return None
-    try:
-        return int(s)
-    except ValueError:
-        return None
-
-def _parse_delta_for_sub(s: str):
-    """
-    !차감 수치 파싱: '5', '+5', '-5' 모두 허용 → 항상 감소(-abs)
-    """
-    s = (s or "").strip().lstrip("+")
-    try:
-        n = int(s)
-    except ValueError:
-        return None
-    return -abs(n)
-
 # ====== 명령어: !추가 / !차감 ======
 
-@bot.command(name="추가", help="!추가 이름 +숫자 → B열의 해당 이름 행 D열(체력값)에 +숫자만큼 증감합니다. 예: !추가 대선 +5, !추가 수련 -3")
+@bot.command(name="추가", help="!추가 이름 수치 → 기존 체력값에 수치만큼 더합니다. 예: !추가 대선 5")
 async def 추가(ctx, 이름: str, 수치: str):
-    delta = _parse_delta_for_add(수치)
-    if delta is None:
-        await ctx.send("⚠️ 수치는 +또는 -로 시작해야 합니다. 예) `!추가 대선 +5` 또는 `!추가 수련 -3`")
+    if not 수치.isdigit():
+        await ctx.send("⚠️ 수치는 양의 정수여야 합니다. 예) `!추가 대선 5`")
         return
+    delta = int(수치)
 
     row, cur_val, new_val = _apply_delta_to_hp(이름, delta)
     if row is None:
         await ctx.send(f"❌ '체력값' 시트 B열에서 '{이름}'을 찾지 못했습니다.")
         return
 
-    sign = "+" if delta >= 0 else ""
-    await ctx.send(f"✅ '{이름}' 체력값 {cur_val} → {sign}{delta} = **{new_val}** (행 {row}, D열)")
+    await ctx.send(f"✅ '{이름}' 체력값 {cur_val} → +{delta} = **{new_val}** (행 {row}, D열)")
 
-@bot.command(name="차감", help="!차감 이름 수치 → B열의 해당 이름 행 D열(체력값)에서 수치만큼 감소. 예: !차감 대선 5")
+@bot.command(name="차감", help="!차감 이름 수치 → 기존 체력값에서 수치만큼 뺍니다. 예: !차감 대선 5")
 async def 차감(ctx, 이름: str, 수치: str):
-    delta = _parse_delta_for_sub(수치)
-    if delta is None:
-        await ctx.send("⚠️ 수치는 정수여야 합니다. 예) `!차감 수련 3` 또는 `!차감 수련 +3`")
+    if not 수치.isdigit():
+        await ctx.send("⚠️ 수치는 양의 정수여야 합니다. 예) `!차감 수련 3`")
         return
+    delta = -int(수치)  # 무조건 감소
 
     row, cur_val, new_val = _apply_delta_to_hp(이름, delta)
     if row is None:
         await ctx.send(f"❌ '체력값' 시트 B열에서 '{이름}'을 찾지 못했습니다.")
         return
 
-    await ctx.send(f"✅ '{이름}' 체력값 {cur_val} → {delta} = **{new_val}** (행 {row}, D열)")
+    await ctx.send(f"✅ '{이름}' 체력값 {cur_val} → -{abs(delta)} = **{new_val}** (행 {row}, D열)")
 
 bot.run(DISCORD_TOKEN)
