@@ -44,7 +44,7 @@ try:
     sheet = gclient.open_by_key(SHEET_KEY).sheet1  # 기본은 1번째 시트
 except Exception as e:
     timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
-    print("❌ 구글 스프레드시트 인증/접속 실패:", e)
+    print("❌ 구글 스프레드시트 인증/접속 실패:", e\n{timestamp})
     sys.exit(1)
 
 # 🧰 유틸
