@@ -169,18 +169,6 @@ async def 사용(ctx, 이름: str, *, 물품명: str):
     except Exception as e:
         await ctx.send(f"❌ 사용 처리 실패: {e}\n{timestamp}")
 
-@bot.command(name="랜덤", help="!랜덤 이름1 이름2 ... → 입력한 이름 중 하나를 무작위로 출력합니다.")
-async def 랜덤(ctx, *이름목록):
-    if not 이름목록:
-        await ctx.send("⚠️ 이름을 한 개 이상 입력하세요. 예) `!랜덤 홍길동 김철수 박영희`")
-        return
-
-    winner = random.choice(이름목록)
-    timestamp = now_kst_str()
-    await ctx.send(f"랜덤 선택: **{winner}**\n{timestamp}")
-
-# ====== 체력 증감 공통 유틸 ======
-
 def _find_row_in_colB(sh, name: str):
     """B열에서 이름 정확 일치 행 번호 반환 (없으면 None)"""
     colB = sh.col_values(2)
@@ -251,7 +239,15 @@ async def 추첨(ctx, 숫자: str):
     except Exception as e:
         await ctx.send(f"❌ 추첨 실패: {e}")
 
-# ====== 명령어: !추가 / !차감 ======
+@bot.command(name="랜덤", help="!랜덤 이름1 이름2 ... → 입력한 이름 중 하나를 무작위로 출력합니다.")
+async def 랜덤(ctx, *이름목록):
+    if not 이름목록:
+        await ctx.send("⚠️ 이름을 한 개 이상 입력하세요. 예) `!랜덤 홍길동 김철수 박영희`")
+        return
+
+    winner = random.choice(이름목록)
+    timestamp = now_kst_str()
+    await ctx.send(f"랜덤 선택: **{winner}**\n{timestamp}")
 
 @bot.command(name="추가", help="!추가 이름 수치 → 기존 체력값에 수치만큼 더합니다. 예: !추가 홍길동 5")
 async def 추가(ctx, 이름: str, 수치: str):
@@ -294,6 +290,7 @@ HELP_OVERRIDES = {
     "도움말":  "현재 사용 가능한 명령어 목록을 표시합니다.",
     "시트테스트":    "연결 확인 시트의 A1에 현재 시간을 기록하고 값을 확인합니다. 예) !시트테스트",
     "추첨":    "체력값 시트 B6부터 마지막 행까지 이름 중에서 숫자만큼 무작위 추첨합니다. 예) !추첨 3",
+    "랜덤":    "쉼표 제외 입력한 이름 중 하나를 무작위로 출력합니다. 예) !랜덤 김철수 신짱구 훈이",
     "합계":   "체력값 시트의 대선(G2), 사련(I2) 값을 불러옵니다. 예) !합계",
     "구매":   "명단 시트에서 B열의 이름을 찾아 같은 행 F열 물품목록에 아이템을 추가(콤마 누적)합니다. 예) !구매 홍길동 붕대",
     "사용":   "명단 시트에서 B열의 이름을 찾아 같은 행 F열에서 해당 아이템 1개를 제거합니다. 예) !사용 홍길동 붕대",
@@ -306,7 +303,7 @@ HELP_OVERRIDES = {
 }
 
 # 표기 순서 고정
-HELP_ORDER = ["도움말", "시트테스트", "추첨", "합계", "구매", "사용", "전체", "추가", "차감", "접속", "다이스", "전투"]
+HELP_ORDER = ["도움말", "시트테스트", "추첨", "랜덤", "합계", "구매", "사용", "전체", "추가", "차감", "접속", "다이스", "전투"]
 
 @bot.command(name="도움말")
 async def 도움말(ctx):
