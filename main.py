@@ -472,8 +472,8 @@ class BattleDefendButton(Button):
         )
         else:
         result_line = (
-        f"공격 **{atk_sum}** ( {' + '.join(map(str, atk_rolls))} ) / "
-        f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → **완전 방어**"
+            f"공격 **{atk_sum}** ( {' + '.join(map(str, atk_rolls))} ) / "
+            f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → **완전 방어**"
         )
 
         # 사망(0 이하) 처리: 문구를 '0 이하'로 명확화
