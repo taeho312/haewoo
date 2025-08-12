@@ -463,13 +463,17 @@ class BattleDefendButton(Button):
         hp2 = get_hp_bar(hp2_val)
         timestamp = datetime.now(KST).strftime("%Y/%m/%d %H:%M:%S")
 
-        # 결과 라인(계산식 일관 표기)
+        # 결과 라인(계산식 일관 표기, 완전 방어도 방어 주사위 표시)
+        if net_dmg > 0:
         result_line = (
             f"공격 **{atk_sum}** ( {' + '.join(map(str, atk_rolls))} ) / "
             f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → "
             f"피해 **{net_dmg}**"
-            if net_dmg > 0 else
-            f"공격 **{atk_sum}** / 방어 **{def_sum}** → **완전 방어**"
+        )
+        else:
+        result_line = (
+        f"공격 **{atk_sum}** ( {' + '.join(map(str, atk_rolls))} ) / "
+        f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → **완전 방어**"
         )
 
         # 사망(0 이하) 처리: 문구를 '0 이하'로 명확화
