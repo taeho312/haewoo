@@ -465,16 +465,16 @@ class BattleDefendButton(Button):
 
         # 결과 라인(계산식 일관 표기, 완전 방어도 방어 주사위 표시)
         if net_dmg > 0:
-        result_line = (
-            f"공격 **{atk_sum}** ( {' + '.join(map(str, atk_rolls))} ) / "
-            f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → "
-            f"피해 **{net_dmg}**"
-        )
+            result_line = (
+                f"공격 **{atk_sum}** ( {' + '.join(map(str, atk_rolls))} ) / "
+                f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → "
+                f"피해 **{net_dmg}**"
+            )
         else:
-        result_line = (
-            f"공격 **{atk_sum}** ( {' + '.join(map(str, atk_rolls))} ) / "
-            f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → **완전 방어**"
-        )
+            result_line = (
+                f"공격 **{atk_sum}** ( {' + '.join(map(str, atk_rolls))} ) / "
+                f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → **완전 방어**"
+            )
 
         # 사망(0 이하) 처리: 문구를 '0 이하'로 명확화
         if data["체력"][defender] <= 0:
