@@ -169,6 +169,16 @@ async def 사용(ctx, 이름: str, *, 물품명: str):
     except Exception as e:
         await ctx.send(f"❌ 사용 처리 실패: {e}\n{timestamp}")
 
+@bot.command(name="랜덤", help="!랜덤 이름1 이름2 ... → 입력한 이름 중 하나를 무작위로 출력합니다.")
+async def 랜덤(ctx, *이름목록):
+    if not 이름목록:
+        await ctx.send("⚠️ 이름을 한 개 이상 입력하세요. 예) `!랜덤 홍길동 김철수 박영희`")
+        return
+
+    winner = random.choice(이름목록)
+    timestamp = now_kst_str()
+    await ctx.send(f"랜덤 선택: **{winner}**\n{timestamp}")
+
 # ====== 체력 증감 공통 유틸 ======
 
 def _find_row_in_colB(sh, name: str):
