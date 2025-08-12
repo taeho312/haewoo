@@ -449,7 +449,7 @@ class BattleDefendButton(Button):
         attacker = data["공격자"]
         last = data.get("최근공격") or {}
 
-        # 안전장치: 공격 정보 없으면 에러
+        # 공격 정보
         atk_sum = int(last.get("합", 0))
         atk_rolls = last.get("주사위", [])
 
@@ -457,11 +457,19 @@ class BattleDefendButton(Button):
         def_rolls = [random.randint(1, 6) for _ in range(2)]
         def_sum = sum(def_rolls)
 
-        # 순피해 = max(0, 공격합 - 방어합)
-        net_dmg = max(0, atk_sum - def_sum)
-
-        # HP 감소 (음수 허용)
-        data["체력"][defender] -= net_dmg
+        # 피해 계산:
+        # - 공격 > 방어  → defender에게 (공격-방어)
+        # - 방어 > 공격  → attacker에게 (방어-공격)  ← 반격
+        # - 동일        → 피해 없음(완전 방어)
+        dmg_to_defender = 0
+        dmg_to_attacker = 0
+        if atk_sum > def_sum:
+            dmg_to_defender = atk_sum - def_sum
+            data["체력"][defender] -= dmg_to_defender
+        elif def_sum > atk_sum:
+            dmg_to_attacker = def_sum - atk_sum
+            data["체력"][attacker] -= dmg_to_attacker
+        # else: 둘 다 0
 
         # 표시용
         hp1_val = data["체력"][data["플레이어1"]]
@@ -470,12 +478,18 @@ class BattleDefendButton(Button):
         hp2 = get_hp_bar(hp2_val)
         timestamp = datetime.now(KST).strftime("%Y/%m/%d %H:%M:%S")
 
-        # 결과 라인(계산식 일관 표기, 완전 방어도 방어 주사위 표시)
-        if net_dmg > 0:
+        # 결과 라인
+        if dmg_to_defender > 0:
             result_line = (
                 f"공격 **{atk_sum}** ( {' + '.join(map(str, atk_rolls))} ) / "
                 f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → "
-                f"피해 **{net_dmg}**"
+                f"{defender} 피해 **{dmg_to_defender}**"
+            )
+        elif dmg_to_attacker > 0:
+            result_line = (
+                f"공격 **{atk_sum}** ( {' + '.join(map(str, atk_rolls))} ) / "
+                f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → "
+                f"{attacker} **반격 피해 {dmg_to_attacker}**"
             )
         else:
             result_line = (
@@ -483,14 +497,13 @@ class BattleDefendButton(Button):
                 f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → **완전 방어**"
             )
 
-        # 사망(0 이하) 처리: 문구를 '0 이하'로 명확화
-        if data["체력"][defender] <= 0:
+        # 사망(0 이하) 처리
+        # 1) 방어 측이 맞아서 사망한 경우: 기존 로직 유지 (후공이면 마지막 반격 부여)
+        if dmg_to_defender > 0 and data["체력"][defender] <= 0:
             if not data.get("최종반격", False) and defender == data["후공"]:
-                # 후공만 최종 반격 1회 부여
                 data["최종반격"] = True
                 data["턴"], data["상대"] = defender, attacker
                 data["단계"] = "공격"
-
                 msg = (
                     f"{defender}의 방어 차례입니다.\n"
                     f"{result_line}\n"
@@ -504,7 +517,6 @@ class BattleDefendButton(Button):
                 await interaction.response.defer()
                 return
             else:
-                # 반격 없음 → 즉시 종료 (공격자 승)
                 msg = (
                     f"{defender}의 방어 차례입니다.\n"
                     f"{result_line}\n"
@@ -519,7 +531,22 @@ class BattleDefendButton(Button):
                 del active_battles[self.channel_id]
                 return
 
-        # 최종 반격 흐름에서의 종료 판정(기존 로직 유지)
+        # 2) 반격으로 공격자가 사망한 경우: 즉시 종료(방어자 승)
+        if dmg_to_attacker > 0 and data["체력"][attacker] <= 0:
+            msg = (
+                f"{defender}의 방어 차례입니다.\n"
+                f"{result_line}\n\n"
+                f"전투가 종료되었습니다. {defender}의 승리입니다.\n"
+                f"{data['플레이어1']}: {hp1}\n"
+                f"{data['플레이어2']}: {hp2}\n"
+                f"{timestamp}"
+            )
+            await interaction.channel.send(msg)
+            await interaction.response.defer()
+            del active_battles[self.channel_id]
+            return
+
+        # 최종 반격 흐름에서의 종료 판정(기존 규칙 그대로)
         if data.get("최종반격", False):
             if hp1_val <= 0 and hp2_val > 0:
                 winner = data["플레이어2"]
@@ -544,7 +571,7 @@ class BattleDefendButton(Button):
             del active_battles[self.channel_id]
             return
 
-        # 일반 턴 전환
+        # 일반 턴 전환(방어가 끝났으므로 다음 턴은 defender의 공격)
         data["턴"], data["상대"] = defender, attacker
         data["단계"] = "공격"
 
