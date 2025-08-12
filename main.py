@@ -381,9 +381,11 @@ async def 전체(ctx, 수치: str):
 active_battles = {}
 
 def get_hp_bar(current, max_hp=50, bar_length=10):
-    filled_length = int(bar_length * max(current, 0) / max_hp)
+    # 내부 HP는 음수도 허용. 바/텍스트 표시만 0 하한.
+    vis = max(current, 0)
+    filled_length = int(bar_length * vis / max_hp)
     bar = '█' * filled_length + '░' * (bar_length - filled_length)
-    return f"[{bar}] {max(current, 0)}/{max_hp}"
+    return f"[{bar}] {vis}/{max_hp}"
 
 class BattleAttackButton(Button):
     def __init__(self, channel_id):
@@ -400,11 +402,12 @@ class BattleAttackButton(Button):
         defender = data["상대"]
 
         # 공격 주사위 4개 (1D6 × 4)
-        rolls = [random.randint(1, 6) for _ in range(4)]
-        total_attack = sum(rolls)
-        dice_text = " + ".join(str(r) for r in rolls)
+        atk_rolls = [random.randint(1, 6) for _ in range(4)]
+        atk_sum = sum(atk_rolls)
 
-        data["최근공격"] = total_attack
+        # 라운드 증가 및 이번 공격 정보 고정 저장
+        data["라운드"] = data.get("라운드", 0) + 1
+        data["최근공격"] = {"합": atk_sum, "주사위": atk_rolls, "라운드": data["라운드"]}
         data["공격자"] = attacker
         data["방어자"] = defender
         data["단계"] = "방어"
@@ -415,7 +418,7 @@ class BattleAttackButton(Button):
 
         msg = (
             f"{attacker}의 공격 차례입니다.\n"
-            f"공격 {dice_text} → 총 {total_attack}\n\n"
+            f"공격 주사위: {' + '.join(map(str, atk_rolls))} = **{atk_sum}**\n\n"
             f"{defender}의 방어 차례입니다.\n\n"
             f"{data['플레이어1']}: {hp1}\n"
             f"{data['플레이어2']}: {hp2}\n"
@@ -437,23 +440,39 @@ class BattleDefendButton(Button):
 
         defender = data["방어자"]
         attacker = data["공격자"]
-        last_dmg = data.get("최근공격", 0)
+        last = data.get("최근공격") or {}
+
+        # 안전장치: 공격 정보 없으면 에러
+        atk_sum = int(last.get("합", 0))
+        atk_rolls = last.get("주사위", [])
 
         # 방어 주사위 2개 (1D6 × 2)
-        rolls = [random.randint(1, 6) for _ in range(2)]
-        defense = sum(rolls)
-        net_dmg = max(0, last_dmg - defense)
+        def_rolls = [random.randint(1, 6) for _ in range(2)]
+        def_sum = sum(def_rolls)
+
+        # 순피해 = max(0, 공격합 - 방어합)
+        net_dmg = max(0, atk_sum - def_sum)
+
+        # HP 감소 (음수 허용)
         data["체력"][defender] -= net_dmg
 
-        dice_text = " + ".join(str(r) for r in rolls)
-
+        # 표시용
         hp1_val = data["체력"][data["플레이어1"]]
         hp2_val = data["체력"][data["플레이어2"]]
         hp1 = get_hp_bar(hp1_val)
         hp2 = get_hp_bar(hp2_val)
         timestamp = datetime.now(KST).strftime("%Y/%m/%d %H:%M:%S")
 
-        # 방어 후 체력 0 이하인 경우
+        # 결과 라인(계산식 일관 표기)
+        result_line = (
+            f"공격 **{atk_sum}** ( {' + '.join(map(str, atk_rolls))} ) / "
+            f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → "
+            f"피해 **{net_dmg}**"
+            if net_dmg > 0 else
+            f"공격 **{atk_sum}** / 방어 **{def_sum}** → **완전 방어**"
+        )
+
+        # 사망(0 이하) 처리: 문구를 '0 이하'로 명확화
         if data["체력"][defender] <= 0:
             if not data.get("최종반격", False) and defender == data["후공"]:
                 # 후공만 최종 반격 1회 부여
@@ -463,8 +482,8 @@ class BattleDefendButton(Button):
 
                 msg = (
                     f"{defender}의 방어 차례입니다.\n"
-                    f"방어 {dice_text} - 누적 데미지 {last_dmg}\n"
-                    f"{defender}의 체력이 0이 되었지만, 마지막 반격 기회를 얻습니다.\n\n"
+                    f"{result_line}\n"
+                    f"{defender}의 체력이 **0 이하**가 되었지만, 마지막 반격 기회를 얻습니다.\n\n"
                     f"{defender}의 마지막 공격 차례입니다.\n\n"
                     f"{data['플레이어1']}: {hp1}\n"
                     f"{data['플레이어2']}: {hp2}\n"
@@ -474,11 +493,11 @@ class BattleDefendButton(Button):
                 await interaction.response.defer()
                 return
             else:
-                # 반격 없음 또는 (선공 사망 등) → 즉시 종료 (공격자 승)
+                # 반격 없음 → 즉시 종료 (공격자 승)
                 msg = (
                     f"{defender}의 방어 차례입니다.\n"
-                    f"방어 {dice_text} - 누적 데미지 {last_dmg}\n"
-                    f"{defender}의 체력이 0이 되었습니다.\n\n"
+                    f"{result_line}\n"
+                    f"{defender}의 체력이 **0 이하**가 되었습니다.\n\n"
                     f"전투가 종료되었습니다. {attacker}의 승리입니다.\n"
                     f"{data['플레이어1']}: {hp1}\n"
                     f"{data['플레이어2']}: {hp2}\n"
@@ -489,38 +508,18 @@ class BattleDefendButton(Button):
                 del active_battles[self.channel_id]
                 return
 
-        result_line = (
-            f"방어 {dice_text} - 누적 데미지 {last_dmg} → 총 {net_dmg}"
-            if net_dmg > 0 else
-            f"방어 {dice_text} - 누적 데미지 {last_dmg} → 완전 방어에 성공합니다."
-        )
-
-        # 최종 반격이 진행 중이었다면(= 이번 방어가 선공의 방어) → 여기서 체력 비교로 종료
+        # 최종 반격 흐름에서의 종료 판정(기존 로직 유지)
         if data.get("최종반격", False):
-            # 강제 종료 규칙과 동일한 비교식 사용
             if hp1_val <= 0 and hp2_val > 0:
                 winner = data["플레이어2"]
             elif hp2_val <= 0 and hp1_val > 0:
                 winner = data["플레이어1"]
             elif hp1_val <= 0 and hp2_val <= 0:
-                # 둘 다 0 이하면 0에 가까운 쪽 승리 (값이 더 큰 쪽)
-                if hp1_val > hp2_val:
-                    winner = data["플레이어1"]
-                elif hp2_val > hp1_val:
-                    winner = data["플레이어2"]
-                else:
-                    winner = None
+                winner = data["플레이어1"] if hp1_val > hp2_val else (data["플레이어2"] if hp2_val > hp1_val else None)
             else:
-                # 둘 다 양수면 높은 체력 승
-                if hp1_val > hp2_val:
-                    winner = data["플레이어1"]
-                elif hp2_val > hp1_val:
-                    winner = data["플레이어2"]
-                else:
-                    winner = None
+                winner = data["플레이어1"] if hp1_val > hp2_val else (data["플레이어2"] if hp2_val > hp1_val else None)
 
             result = f"전투가 종료되었습니다. {winner}의 승리입니다." if winner else "전투가 종료되었습니다. 무승부입니다."
-
             msg = (
                 f"{defender}의 방어 차례입니다.\n"
                 f"{result_line}\n\n"
@@ -627,6 +626,8 @@ async def 전투(ctx, 플레이어1: str, 플레이어2: str):
         "최종반격": False,
         "선공": first,
         "후공": second
+        "라운드": 0,           # ← 추가
+        "최근공격": None       # ← 명시 초기화
     }
 
     await ctx.send(
