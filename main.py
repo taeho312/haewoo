@@ -409,7 +409,7 @@ class BattleAttackButton(Button):
         defender = data["상대"]
 
         # 공격 주사위 4개 (1D6 × 4)
-        atk_rolls = [random.randint(1, 6) for _ in range(4)]
+        atk_rolls = [random.randint(1, 6) for _ in range(5)]
         atk_sum = sum(atk_rolls)
 
         # 라운드 증가 및 이번 공격 정보 고정 저장
@@ -454,7 +454,7 @@ class BattleDefendButton(Button):
         atk_rolls = last.get("주사위", [])
 
         # 방어 주사위 2개 (1D6 × 2)
-        def_rolls = [random.randint(1, 6) for _ in range(4)]
+        def_rolls = [random.randint(1, 6) for _ in range(1)]
         def_sum = sum(def_rolls)
 
         # 피해 계산:
