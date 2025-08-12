@@ -388,11 +388,10 @@ async def 전체(ctx, 수치: str):
 active_battles = {}
 
 def get_hp_bar(current, max_hp=50, bar_length=10):
-    # 내부 HP는 음수도 허용. 바/텍스트 표시만 0 하한.
-    vis = max(current, 0)
-    filled_length = int(bar_length * vis / max_hp)
+    # 체력 바는 current 값 그대로, 음수도 허용
+    filled_length = int(bar_length * max(min(current, max_hp), 0) / max_hp)
     bar = '█' * filled_length + '░' * (bar_length - filled_length)
-    return f"[{bar}] {vis}/{max_hp}"
+    return f"[{bar}] {current}/{max_hp}"
 
 class BattleAttackButton(Button):
     def __init__(self, channel_id):
