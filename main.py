@@ -206,6 +206,41 @@ def _apply_delta_to_hp(name: str, delta: int):
     _write_hp_D(sh, row, new_val)
     return row, cur_val, new_val
 
+@bot.command(name="추첨", help="!추첨 숫자 → 체력값 시트 B6부터 마지막 행까지 이름 중에서 숫자만큼 무작위 추첨합니다. 예) !추첨 3")
+async def 추첨(ctx, 숫자: str):
+    if not 숫자.isdigit():
+        await ctx.send("⚠️ 숫자를 입력하세요. 예) `!추첨 3`")
+        return
+
+    k = int(숫자)
+    if k <= 0:
+        await ctx.send("⚠️ 1 이상의 숫자를 입력하세요. 예) `!추첨 1`")
+        return
+
+    try:
+        sh = ws("체력값")
+        colB = sh.col_values(2)  # B열 전체
+        if len(colB) < 6:
+            await ctx.send("⚠️ B6 이후 이름 데이터가 없습니다.")
+            return
+
+        # B6부터 끝까지, 비어있지 않은 이름만 수집
+        candidates = [v.strip() for v in colB[5:] if v and v.strip()]
+        total = len(candidates)
+        if total == 0:
+            await ctx.send("⚠️ 추첨 대상이 없습니다. (B6 이후가 비어 있음)")
+            return
+        if k > total:
+            await ctx.send(f"⚠️ 추첨 인원이 대상 수({total}명)를 초과합니다. 더 작은 숫자를 입력하세요.")
+            return
+
+        winners = random.sample(candidates, k)
+        timestamp = now_kst_str()
+        await ctx.send(f"추첨 결과 ({k}명): {', '.join(winners)}\n{timestamp}")
+
+    except Exception as e:
+        await ctx.send(f"❌ 추첨 실패: {e}")
+
 # ====== 명령어: !추가 / !차감 ======
 
 @bot.command(name="추가", help="!추가 이름 수치 → 기존 체력값에 수치만큼 더합니다. 예: !추가 홍길동 5")
@@ -248,6 +283,7 @@ bot.remove_command("help")
 HELP_OVERRIDES = {
     "도움말":  "현재 사용 가능한 명령어 목록을 표시합니다.",
     "시트테스트":    "연결 확인 시트의 A1에 현재 시간을 기록하고 값을 확인합니다. 예) !시트테스트",
+    "추첨":    "체력값 시트 B6부터 마지막 행까지 이름 중에서 숫자만큼 무작위 추첨합니다. 예) !추첨 3",
     "합계":   "체력값 시트의 대선(G2), 사련(I2) 값을 불러옵니다. 예) !합계",
     "구매":   "명단 시트에서 B열의 이름을 찾아 같은 행 F열 물품목록에 아이템을 추가(콤마 누적)합니다. 예) !구매 홍길동 붕대",
     "사용":   "명단 시트에서 B열의 이름을 찾아 같은 행 F열에서 해당 아이템 1개를 제거합니다. 예) !사용 홍길동 붕대",
@@ -260,7 +296,7 @@ HELP_OVERRIDES = {
 }
 
 # 표기 순서 고정
-HELP_ORDER = ["도움말", "시트테스트", "합계", "구매", "사용", "전체", "추가", "차감", "접속", "다이스", "전투"]
+HELP_ORDER = ["도움말", "시트테스트", "추첨", "합계", "구매", "사용", "전체", "추가", "차감", "접속", "다이스", "전투"]
 
 @bot.command(name="도움말")
 async def 도움말(ctx):
