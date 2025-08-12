@@ -393,6 +393,27 @@ def get_hp_bar(current, max_hp=50, bar_length=10):
     bar = '█' * filled_length + '░' * (bar_length - filled_length)
     return f"[{bar}] {current}/{max_hp}"
 
+def decide_winner(hp1_val, hp2_val, p1, p2):
+    # 0 이하면 '0에 더 가까운'(값이 더 큰) 쪽이 승
+    if hp1_val <= 0 and hp2_val > 0:
+        return p2
+    elif hp2_val <= 0 and hp1_val > 0:
+        return p1
+    elif hp1_val <= 0 and hp2_val <= 0:
+        if hp1_val > hp2_val:
+            return p1
+        elif hp2_val > hp1_val:
+            return p2
+        else:
+            return None  # 무승부
+    else:
+        if hp1_val > hp2_val:
+            return p1
+        elif hp2_val > hp1_val:
+            return p2
+        else:
+            return None  # 무승부
+
 class BattleAttackButton(Button):
     def __init__(self, channel_id):
         super().__init__(label="공격", style=discord.ButtonStyle.danger)
@@ -439,21 +460,27 @@ class BattleDefendButton(Button):
         self.channel_id = channel_id
 
     async def callback(self, interaction: discord.Interaction):
-        data = active_battles[self.channel_id]
+        data = active_battles.get(self.channel_id)
+        if not data:
+            await interaction.response.send_message("진행 중인 전투가 없습니다.", ephemeral=True)
+            return
         if data["단계"] != "방어":
-            await interaction.response.send_message("지금은 방어할 수 없습니다.", ephemeral=False)
+            await interaction.response.send_message("지금은 방어할 수 없습니다.", ephemeral=True)
             return
 
         defender = data["방어자"]
         attacker = data["공격자"]
         last = data.get("최근공격") or {}
 
+        # 인터랙션 먼저 보류
+        await interaction.response.defer()
+
         # 공격 정보
         atk_sum = int(last.get("합", 0))
         atk_rolls = last.get("주사위", [])
 
         # 방어 주사위 2개 (1D6 × 2)
-        def_rolls = [random.randint(1, 6) for _ in range(1)]
+        def_rolls = [random.randint(1, 6) for _ in range(2)]
         def_sum = sum(def_rolls)
 
         # 피해 계산:
@@ -468,16 +495,15 @@ class BattleDefendButton(Button):
         elif def_sum > atk_sum:
             dmg_to_attacker = def_sum - atk_sum
             data["체력"][attacker] -= dmg_to_attacker
-        # else: 둘 다 0
 
-        # 표시용
-        hp1_val = data["체력"][data["플레이어1"]]
-        hp2_val = data["체력"][data["플레이어2"]]
+        # 표시용 값(최신 HP로)
+        p1 = data["플레이어1"]; p2 = data["플레이어2"]
+        hp1_val = data["체력"][p1]; hp2_val = data["체력"][p2]
         hp1 = get_hp_bar(hp1_val)
         hp2 = get_hp_bar(hp2_val)
         timestamp = datetime.now(KST).strftime("%Y/%m/%d %H:%M:%S")
 
-        # 결과 라인
+        # 결과 라인(항상 주사위 내역 포함)
         if dmg_to_defender > 0:
             result_line = (
                 f"공격 **{atk_sum}** ( {' + '.join(map(str, atk_rolls))} ) / "
@@ -496,9 +522,10 @@ class BattleDefendButton(Button):
                 f"방어 **{def_sum}** ( {' + '.join(map(str, def_rolls))} ) → **완전 방어**"
             )
 
-        # 사망(0 이하) 처리
-        # 1) 방어 측이 맞아서 사망한 경우: 기존 로직 유지 (후공이면 마지막 반격 부여)
+        # ===== 종료 판정 시작 =====
+        # A) 방어자가 맞아서 0 이하
         if dmg_to_defender > 0 and data["체력"][defender] <= 0:
+            # 후공에게만 최종 반격 1회
             if not data.get("최종반격", False) and defender == data["후공"]:
                 data["최종반격"] = True
                 data["턴"], data["상대"] = defender, attacker
@@ -508,67 +535,61 @@ class BattleDefendButton(Button):
                     f"{result_line}\n"
                     f"{defender}의 체력이 **0 이하**가 되었지만, 마지막 반격 기회를 얻습니다.\n\n"
                     f"{defender}의 마지막 공격 차례입니다.\n\n"
-                    f"{data['플레이어1']}: {hp1}\n"
-                    f"{data['플레이어2']}: {hp2}\n"
+                    f"{p1}: {hp1}\n"
+                    f"{p2}: {hp2}\n"
                     f"{timestamp}"
                 )
-                await interaction.channel.send(msg, view=BattleView(self.channel_id))
-                await interaction.response.defer()
+                await interaction.followup.send(msg, view=BattleView(self.channel_id))
                 return
             else:
+                # 즉시 종료: 현재 HP로 승자 판정(공격자 고정 승리 아님!)
+                winner = decide_winner(hp1_val, hp2_val, p1, p2)
+                result = f"전투가 종료되었습니다. {winner}의 승리입니다." if winner else "전투가 종료되었습니다. 무승부입니다."
                 msg = (
                     f"{defender}의 방어 차례입니다.\n"
                     f"{result_line}\n"
                     f"{defender}의 체력이 **0 이하**가 되었습니다.\n\n"
-                    f"전투가 종료되었습니다. {attacker}의 승리입니다.\n"
-                    f"{data['플레이어1']}: {hp1}\n"
-                    f"{data['플레이어2']}: {hp2}\n"
+                    f"{result}\n"
+                    f"{p1}: {hp1}\n"
+                    f"{p2}: {hp2}\n"
                     f"{timestamp}"
                 )
-                await interaction.channel.send(msg)
-                await interaction.response.defer()
+                await interaction.followup.send(msg)
                 del active_battles[self.channel_id]
                 return
 
-        # 2) 반격으로 공격자가 사망한 경우: 즉시 종료(방어자 승)
+        # B) 반격으로 공격자가 0 이하
         if dmg_to_attacker > 0 and data["체력"][attacker] <= 0:
-            msg = (
-                f"{defender}의 방어 차례입니다.\n"
-                f"{result_line}\n\n"
-                f"전투가 종료되었습니다. {defender}의 승리입니다.\n"
-                f"{data['플레이어1']}: {hp1}\n"
-                f"{data['플레이어2']}: {hp2}\n"
-                f"{timestamp}"
-            )
-            await interaction.channel.send(msg)
-            await interaction.response.defer()
-            del active_battles[self.channel_id]
-            return
-
-        # 최종 반격 흐름에서의 종료 판정(기존 규칙 그대로)
-        if data.get("최종반격", False):
-            if hp1_val <= 0 and hp2_val > 0:
-                winner = data["플레이어2"]
-            elif hp2_val <= 0 and hp1_val > 0:
-                winner = data["플레이어1"]
-            elif hp1_val <= 0 and hp2_val <= 0:
-                winner = data["플레이어1"] if hp1_val > hp2_val else (data["플레이어2"] if hp2_val > hp1_val else None)
-            else:
-                winner = data["플레이어1"] if hp1_val > hp2_val else (data["플레이어2"] if hp2_val > hp1_val else None)
-
+            winner = decide_winner(hp1_val, hp2_val, p1, p2)
             result = f"전투가 종료되었습니다. {winner}의 승리입니다." if winner else "전투가 종료되었습니다. 무승부입니다."
             msg = (
                 f"{defender}의 방어 차례입니다.\n"
                 f"{result_line}\n\n"
                 f"{result}\n"
-                f"{data['플레이어1']}: {hp1}\n"
-                f"{data['플레이어2']}: {hp2}\n"
+                f"{p1}: {hp1}\n"
+                f"{p2}: {hp2}\n"
                 f"{timestamp}"
             )
-            await interaction.channel.send(msg)
-            await interaction.response.defer()
+            await interaction.followup.send(msg)
             del active_battles[self.channel_id]
             return
+
+        # C) 최종 반격 흐름에서의 종료 판정(동일 규칙)
+        if data.get("최종반격", False):
+            winner = decide_winner(hp1_val, hp2_val, p1, p2)
+            result = f"전투가 종료되었습니다. {winner}의 승리입니다." if winner else "전투가 종료되었습니다. 무승부입니다."
+            msg = (
+                f"{defender}의 방어 차례입니다.\n"
+                f"{result_line}\n\n"
+                f"{result}\n"
+                f"{p1}: {hp1}\n"
+                f"{p2}: {hp2}\n"
+                f"{timestamp}"
+            )
+            await interaction.followup.send(msg)
+            del active_battles[self.channel_id]
+            return
+        # ===== 종료 판정 끝 =====
 
         # 일반 턴 전환(방어가 끝났으므로 다음 턴은 defender의 공격)
         data["턴"], data["상대"] = defender, attacker
@@ -578,12 +599,11 @@ class BattleDefendButton(Button):
             f"{defender}의 방어 차례입니다.\n"
             f"{result_line}\n\n"
             f"{defender}의 공격 차례입니다.\n\n"
-            f"{data['플레이어1']}: {hp1}\n"
-            f"{data['플레이어2']}: {hp2}\n"
+            f"{p1}: {hp1}\n"
+            f"{p2}: {hp2}\n"
             f"{timestamp}"
         )
-        await interaction.channel.send(msg, view=BattleView(self.channel_id))
-        await interaction.response.defer()
+        await interaction.followup.send(msg, view=BattleView(self.channel_id))
 
 class BattleEndButton(Button):
     def __init__(self, channel_id):
