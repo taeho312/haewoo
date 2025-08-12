@@ -454,7 +454,7 @@ class BattleDefendButton(Button):
         atk_rolls = last.get("주사위", [])
 
         # 방어 주사위 2개 (1D6 × 2)
-        def_rolls = [random.randint(1, 6) for _ in range(2)]
+        def_rolls = [random.randint(1, 6) for _ in range(4)]
         def_sum = sum(def_rolls)
 
         # 피해 계산:
