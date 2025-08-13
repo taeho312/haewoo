@@ -479,8 +479,14 @@ class BattleDefendButton(Button):
         atk_sum = int(last.get("합", 0))
         atk_rolls = last.get("주사위", [])
 
-        # 방어 주사위 2개 (1D6 × 2)
+        # 방어 주사위 굴리기 (기본 2개)
         def_rolls = [random.randint(1, 6) for _ in range(2)]
+
+        # ✅ 후공 첫 방어 시 주사위 1개 추가
+        if defender == data["후공"] and data.get("첫방어", True):
+            def_rolls.append(random.randint(1, 6))
+            data["첫방어"] = False  # 이후부터는 적용 안 함
+
         def_sum = sum(def_rolls)
 
         # 피해 계산:
@@ -682,7 +688,8 @@ async def 전투(ctx, 플레이어1: str, 플레이어2: str):
         "상대": second,
         "최종반격": False,
         "선공": first,
-        "후공": second,
+        "후공": second,     # 후공 저장
+        "첫방어": True,       # 후공 첫 방어 주사위 +1 플래그
         "라운드": 0,           # ← 추가
         "최근공격": None       # ← 명시 초기화
     }
