@@ -479,8 +479,8 @@ class BattleDefendButton(Button):
         atk_sum = int(last.get("합", 0))
         atk_rolls = last.get("주사위", [])
 
-        # 방어 주사위 굴리기 (기본 2개)
-        def_rolls = [random.randint(1, 6) for _ in range(2)]
+        # 방어 주사위 굴리기 (기본 1개)
+        def_rolls = [random.randint(1, 6) for _ in range(1)]
 
         # ✅ 후공 첫 방어 시 주사위 1개 추가
         if defender == data["후공"] and data.get("첫방어", True):
