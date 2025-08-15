@@ -334,28 +334,22 @@ async def 추첨(ctx, 숫자: str):
     except Exception as e:
         await ctx.send(f"❌ 추첨 실패: {e}")
 
-@bot.command(name="랜덤", help="!랜덤 이름1 이름2 ... → 입력한 이름 중 하나를 무작위로 출력합니다.")
-async def 랜덤(ctx, *이름목록):
-    if not 이름목록:
-        await ctx.send("⚠️ 이름을 한 개 이상 입력하세요. 예) `!랜덤 홍길동 김철수 박영희`")
-        return
-
-    winner = random.choice(이름목록)
-    timestamp = now_kst_str()
-    await ctx.send(f"랜덤 선택: **{winner}**\n{timestamp}")
-
-# 다중 이름 파서: 공백/쉼표 섞여도 처리
-def _parse_names_and_amount(args):
+# 랜덤 전용 파서 (메시지 문구를 랜덤에 맞춤)
+def _parse_names_and_k_for_random(args):
     """
-    args: ("이름1","이름2","...","수치")
-    returns: (names:list[str], amount:int) or (None, error_msg)
+    args: ("이름1","이름2","...","k")
+    returns: (names:list[str], k:int) or (None, error_msg)
     """
     if len(args) < 2:
-        return None, "⚠️ 최소 1명 이상의 이름과 수치를 입력하세요. 예) `!추가 홍길동 김철수 5`"
-    amount_str = args[-1]
-    if not amount_str.isdigit():
-        return None, "⚠️ 수치는 양의 정수여야 합니다. 예) `!추가 홍길동 김철수 5`"
-    amount = int(amount_str)
+        return None, "⚠️ 최소 1명 이상의 이름과 추첨 인원 수를 입력하세요. 예) `!랜덤 홍길동 김철수 박영희 2`"
+
+    k_str = args[-1]
+    if not k_str.isdigit():
+        return None, "⚠️ 추첨 인원 수는 양의 정수여야 합니다. 예) `!랜덤 홍길동 김철수 박영희 2`"
+    k = int(k_str)
+    if k <= 0:
+        return None, "⚠️ 추첨 인원 수는 1 이상이어야 합니다."
+
     raw_names = args[:-1]
     names = []
     for token in raw_names:
@@ -363,9 +357,36 @@ def _parse_names_and_amount(args):
             nm = part.strip()
             if nm:
                 names.append(nm)
+
     if not names:
-        return None, "⚠️ 유효한 이름이 없습니다. 예) `!추가 홍길동 김철수 5`"
-    return (names, amount), None
+        return None, "⚠️ 유효한 이름이 없습니다. 예) `!랜덤 홍길동 김철수 박영희 2`"
+
+    # 동일 이름이 여러 번 들어와도 1명으로 간주(중복 제거, 순서 유지)
+    names = list(dict.fromkeys(names))
+    return (names, k), None
+
+@bot.command(
+    name="랜덤",
+    help="!랜덤 이름1 이름2 ... k → 입력한 이름 중 서로 다른 k명을 무작위로 뽑습니다. 예) !랜덤 홍길동 김철수 박영희 2"
+)
+async def 랜덤(ctx, *args):
+    parsed, err = _parse_names_and_k_for_random(args)
+    timestamp = now_kst_str()
+    if err:
+        await ctx.send(f"{err}\n{timestamp}")
+        return
+
+    names, k = parsed
+    n = len(names)
+
+    # k가 후보 수보다 크면 자동 조정
+    adjusted_msg = ""
+    if k > n:
+        k = n
+        adjusted_msg = f"\n(ℹ️ 후보가 {n}명이므로 {n}명으로 추첨 인원을 조정했습니다.)"
+
+    winners = random.sample(names, k)  # 중복 당첨 없음
+    await ctx.send(f"🎲 랜덤 선택 ({k}명): {', '.join(winners)}{adjusted_msg}\n{timestamp}")
 
 @bot.command(name="추가", help="!추가 이름1 [이름2 ...] 수치 → 지정된 모든 이름의 체력값을 수치만큼 더합니다. 예) !추가 홍길동 김철수 5")
 async def 추가(ctx, *args):
