@@ -386,7 +386,7 @@ async def 랜덤(ctx, *args):
         adjusted_msg = f"\n(ℹ️ 후보가 {n}명이므로 {n}명으로 추첨 인원을 조정했습니다.)"
 
     winners = random.sample(names, k)  # 중복 당첨 없음
-    await ctx.send(f"🎲 랜덤 선택 ({k}명): {', '.join(winners)}{adjusted_msg}\n{timestamp}")
+    await ctx.send(f"랜덤 선택 ({k}명): {', '.join(winners)}{adjusted_msg}\n{timestamp}")
 
 @bot.command(name="추가", help="!추가 이름1 [이름2 ...] 수치 → 지정된 모든 이름의 체력값을 수치만큼 더합니다. 예) !추가 홍길동 김철수 5")
 async def 추가(ctx, *args):
