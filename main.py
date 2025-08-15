@@ -9,6 +9,7 @@ import random
 import os
 import json
 import sys
+import re
 
 KST = timezone(timedelta(hours=9))
 
@@ -118,56 +119,150 @@ def _normalize_items_str(s: str | None) -> str:
     items = [t.strip() for t in s.split(", ") if t.strip()]
     return ", ".join(items)
 
-@bot.command(name="구매")
-async def 구매(ctx, 이름: str, *, 물품명: str):
-    """[명단!A열 이름]의 F열(물품목록)에 물품을 콤마로 누적"""
+# ===== 공통 유틸 =====
+ITEM_RE = re.compile(r"^\s*(.+?)\s*(\d+)\s*개?\s*$")  # "에너지바 2개" / "에너지바 2"
+
+def parse_name_and_qty(text: str):
+    """
+    '에너지바 2개' → ('에너지바', 2)
+    '에너지바'     → ('에너지바', 1)
+    끝의 '개'는 있어도/없어도 됨.
+    """
+    s = (text or "").strip()
+    m = ITEM_RE.match(s)
+    if m:
+        name = m.group(1).strip()
+        qty = int(m.group(2))
+        return name, qty
+    # 수량이 없으면 1개로 처리
+    return s, 1
+
+def parse_items_cell(cell_value: str):
+    """
+    "에너지바 3개, 붕대 2개" → Ordered list + dict
+    반환: (ordered_names, counts_dict)
+    """
+    items = {}
+    order = []
+    s = (cell_value or "").strip()
+    if not s:
+        return order, items
+    for chunk in s.split(","):
+        tok = chunk.strip()
+        if not tok:
+            continue
+        m = ITEM_RE.match(tok)
+        if m:
+            name = m.group(1).strip()
+            qty = int(m.group(2))
+        else:
+            name = tok
+            qty = 1
+        if name not in items:
+            order.append(name)
+            items[name] = 0
+        items[name] += qty
+    return order, items
+
+def items_to_cell(order, items):
+    """
+    order 순서를 유지해 "이름 N개"로 직렬화.
+    수량 0 이하는 제외.
+    """
+    out = []
+    for name in order:
+        qty = items.get(name, 0)
+        if qty > 0:
+            out.append(f"{name} {qty}개")
+    # 혹시 새로 추가된 이름이 order에 없으면 뒤에 붙이기
+    for name, qty in items.items():
+        if qty > 0 and name not in order:
+            out.append(f"{name} {qty}개")
+    return ", ".join(out)
+
+def find_row_by_name(sheet, target_name: str, name_col=2):
+    """B열에서 이름 정확 일치 행 찾기 (없으면 None)"""
+    col_vals = sheet.col_values(name_col)
+    tgt = (target_name or "").strip()
+    for idx, val in enumerate(col_vals, start=1):
+        if (val or "").strip() == tgt:
+            return idx
+    return None
+
+# ===== !구매 / !사용 =====
+@bot.command(name="구매", help="!구매 이름 아이템 [수] → 명단 시트 F열 물품 수량을 추가합니다. 예) !구매 홍길동 에너지바 2개")
+async def 구매(ctx, 이름: str, *, 아이템문구: str):
     try:
-        timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
         sh = ws("명단")
-        row = _find_row_by_name(sh, 이름)
+        row = find_row_by_name(sh, 이름, name_col=2)  # B열
         if not row:
-            
-            await ctx.send(f"❌ '{이름}' 이름을 A열에서 찾지 못했습니다.\n{timestamp}")
+            await ctx.send(f"❌ '명단' 시트 B열에서 '{이름}'을 찾지 못했습니다.")
             return
 
-        cur = _normalize_items_str(sh.acell(f"F{row}").value)
-        items = cur.split(",") if cur else []
-        items.append(물품명.strip())
-        new_val = ",".join([t for t in items if t])  # 공백/빈값 제거
-        sh.update_acell(f"F{row}", new_val)
+        item_name, add_qty = parse_name_and_qty(아이템문구)
+        if add_qty <= 0:
+            await ctx.send("⚠️ 수량은 1 이상이어야 합니다. 예) `!구매 홍길동 에너지바 2개`")
+            return
 
-        await ctx.send(f"✅ '{이름}'의 물품 목록 업데이트 완료: {new_val if new_val else '(비어 있음)'}\n{timestamp}")
+        cell_val = sh.cell(row, 6).value  # F열
+        order, items = parse_items_cell(cell_val)
+
+        # 업데이트
+        if item_name not in items:
+            order.append(item_name)
+            items[item_name] = 0
+        before = items[item_name]
+        items[item_name] += add_qty
+        after = items[item_name]
+
+        sh.update_cell(row, 6, items_to_cell(order, items))
+
+        timestamp = now_kst_str()
+        await ctx.send(f"✅ '{이름}'의 '{item_name}' {before}개 → +{add_qty} = **{after}개**로 업데이트\n{timestamp}")
+
     except Exception as e:
-        await ctx.send(f"❌ 구매 처리 실패: {e}\n{timestamp}")
+        await ctx.send(f"❌ 구매 처리 실패: {e}")
 
-@bot.command(name="사용")
-async def 사용(ctx, 이름: str, *, 물품명: str):
-    """[명단!A열 이름]의 F열(물품목록)에서 해당 물품 1개 제거 (콤마 정리 포함)"""
+@bot.command(name="사용", help="!사용 이름 아이템 [수] → 명단 시트 F열 물품 수량을 감소합니다. 예) !사용 홍길동 에너지바 2개")
+async def 사용(ctx, 이름: str, *, 아이템문구: str):
     try:
-        timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
         sh = ws("명단")
-        row = _find_row_by_name(sh, 이름)
+        row = find_row_by_name(sh, 이름, name_col=2)  # B열
         if not row:
-            await ctx.send(f"❌ '{이름}' 이름을 A열에서 찾지 못했습니다.\n{timestamp}")
+            await ctx.send(f"❌ '명단' 시트 B열에서 '{이름}'을 찾지 못했습니다.")
             return
 
-        cur = _normalize_items_str(sh.acell(f"F{row}").value)
-        if not cur:
-            await ctx.send(f"⚠️ '{이름}'의 물품 목록이 비어 있습니다.\n{timestamp}")
+        item_name, sub_qty = parse_name_and_qty(아이템문구)
+        if sub_qty <= 0:
+            await ctx.send("⚠️ 수량은 1 이상이어야 합니다. 예) `!사용 홍길동 에너지바 2개`")
             return
 
-        items = cur.split(",")
-        try:
-            items.remove(물품명.strip())  # 동일 명칭 1회분만 제거
-        except ValueError:
-            await ctx.send(f"⚠️ '{이름}'의 목록에 '{물품명}'이 없습니다.\n{timestamp}")
+        cell_val = sh.cell(row, 6).value  # F열
+        order, items = parse_items_cell(cell_val)
+
+        if item_name not in items or items[item_name] <= 0:
+            await ctx.send(f"⚠️ '{이름}'에게 '{item_name}'가 없습니다.")
             return
 
-        new_val = ",".join([t for t in items if t])
-        sh.update_acell(f"F{row}", new_val)
-        await ctx.send(f"✅ '{이름}'의 '{물품명}' 사용 처리 완료: {new_val if new_val else '(비어 있음)'}\n{timestamp}")
+        before = items[item_name]
+        after = before - sub_qty
+        if after <= 0:
+            # 0 이하는 삭제
+            items[item_name] = 0
+            # order에서 완전히 제거할지 유지할지 선택: 여기선 제거
+            order = [n for n in order if n != item_name]
+            msg_change = f"{before}개 → -{sub_qty} = **0개** (목록에서 제거)"
+        else:
+            items[item_name] = after
+            msg_change = f"{before}개 → -{sub_qty} = **{after}개**"
+
+        sh.update_cell(row, 6, items_to_cell(order, items))
+
+        timestamp = now_kst_str()
+        await ctx.send(f"✅ '{이름}'의 '{item_name}' 사용 처리: {msg_change}\n{timestamp}")
+
     except Exception as e:
-        await ctx.send(f"❌ 사용 처리 실패: {e}\n{timestamp}")
+        await ctx.send(f"❌ 사용 처리 실패: {e}")
 
 def _find_row_in_colB(sh, name: str):
     """B열에서 이름 정확 일치 행 번호 반환 (없으면 None)"""
