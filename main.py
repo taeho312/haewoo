@@ -344,36 +344,85 @@ async def 랜덤(ctx, *이름목록):
     timestamp = now_kst_str()
     await ctx.send(f"랜덤 선택: **{winner}**\n{timestamp}")
 
-@bot.command(name="추가", help="!추가 이름 수치 → 기존 체력값에 수치만큼 더합니다. 예: !추가 홍길동 5")
-async def 추가(ctx, 이름: str, 수치: str):
+# 다중 이름 파서: 공백/쉼표 섞여도 처리
+def _parse_names_and_amount(args):
+    """
+    args: ("이름1","이름2","...","수치")
+    returns: (names:list[str], amount:int) or (None, error_msg)
+    """
+    if len(args) < 2:
+        return None, "⚠️ 최소 1명 이상의 이름과 수치를 입력하세요. 예) `!추가 홍길동 김철수 5`"
+    amount_str = args[-1]
+    if not amount_str.isdigit():
+        return None, "⚠️ 수치는 양의 정수여야 합니다. 예) `!추가 홍길동 김철수 5`"
+    amount = int(amount_str)
+    raw_names = args[:-1]
+    names = []
+    for token in raw_names:
+        for part in token.split(","):
+            nm = part.strip()
+            if nm:
+                names.append(nm)
+    if not names:
+        return None, "⚠️ 유효한 이름이 없습니다. 예) `!추가 홍길동 김철수 5`"
+    return (names, amount), None
+
+@bot.command(name="추가", help="!추가 이름1 [이름2 ...] 수치 → 지정된 모든 이름의 체력값을 수치만큼 더합니다. 예) !추가 홍길동 김철수 5")
+async def 추가(ctx, *args):
+    parsed, err = _parse_names_and_amount(args)
     timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
-    
-    if not 수치.isdigit():
-        await ctx.send("⚠️ 수치는 양의 정수여야 합니다. 예) `!추가 홍길동 5`\n{timestamp}")
-        return
-    delta = int(수치)
-
-    row, cur_val, new_val = _apply_delta_to_hp(이름, delta)
-    if row is None:
-        await ctx.send(f"❌ '체력값' 시트 B열에서 '{이름}'을 찾지 못했습니다.\n{timestamp}")
+    if err:
+        await ctx.send(f"{err}\n{timestamp}")
         return
 
-    await ctx.send(f"✅ '{이름}' 체력값 {cur_val} → +{delta} = **{new_val}** (행 {row}, D열)")
+    names, amount = parsed
+    delta = amount  # 무조건 증가
 
-@bot.command(name="차감", help="!차감 이름 수치 → 기존 체력값에서 수치만큼 뺍니다. 예: !차감 홍길동 5\n{timestamp}")
-async def 차감(ctx, 이름: str, 수치: str):
+    ok_lines = []
+    fail_lines = []
+    for 이름 in names:
+        row, cur_val, new_val = _apply_delta_to_hp(이름, delta)
+        if row is None:
+            fail_lines.append(f"❌ '{이름}'을(를) 찾지 못했습니다.")
+        else:
+            ok_lines.append(f"✅ '{이름}' {cur_val} → +{delta} = **{new_val}** (행 {row}, D열)")
+
+    # 결과 묶어서 출력
+    parts = []
+    if ok_lines:
+        parts.append("\n".join(ok_lines))
+    if fail_lines:
+        parts.append("\n".join(fail_lines))
+    parts.append(timestamp)
+    await ctx.send("\n".join(parts))
+
+@bot.command(name="차감", help="!차감 이름1 [이름2 ...] 수치 → 지정된 모든 이름의 체력값을 수치만큼 뺍니다. 예) !차감 홍길동 김철수 3")
+async def 차감(ctx, *args):
+    parsed, err = _parse_names_and_amount(args)
     timestamp = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
-    if not 수치.isdigit():
-        await ctx.send("⚠️ 수치는 양의 정수여야 합니다. 예) `!차감 홍길동 3`\n{timestamp}")
-        return
-    delta = -int(수치)  # 무조건 감소
-
-    row, cur_val, new_val = _apply_delta_to_hp(이름, delta)
-    if row is None:
-        await ctx.send(f"❌ '체력값' 시트 B열에서 '{이름}'을 찾지 못했습니다.\n{timestamp}")
+    if err:
+        await ctx.send(f"{err}\n{timestamp}")
         return
 
-    await ctx.send(f"✅ '{이름}' 체력값 {cur_val} → -{abs(delta)} = **{new_val}** (행 {row}, D열)\n{timestamp}")
+    names, amount = parsed
+    delta = -amount  # 무조건 감소
+
+    ok_lines = []
+    fail_lines = []
+    for 이름 in names:
+        row, cur_val, new_val = _apply_delta_to_hp(이름, delta)
+        if row is None:
+            fail_lines.append(f"❌ '{이름}'을(를) 찾지 못했습니다.")
+        else:
+            ok_lines.append(f"✅ '{이름}' {cur_val} → -{amount} = **{new_val}** (행 {row}, D열)")
+
+    parts = []
+    if ok_lines:
+        parts.append("\n".join(ok_lines))
+    if fail_lines:
+        parts.append("\n".join(fail_lines))
+    parts.append(timestamp)
+    await ctx.send("\n".join(parts))
 
 # ====== 도움말: 고정 순서/설명으로 보기 좋게 출력 ======
 
