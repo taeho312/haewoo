@@ -55,6 +55,35 @@ DICE_EMOJI = {
     4: "🎲4", 5: "🎲5", 6: "🎲6"
 }
 
+# 다중 이름 파서: 공백/쉼표 섞여도 처리
+def _parse_names_and_amount(args):
+    """
+    args 예: ("홍길동","김철수","5")  또는 ("홍길동,김철수","5")
+    returns: (names:list[str], amount:int)  또는 (None, error_msg)
+    """
+    if len(args) < 2:
+        return None, "⚠️ 최소 1명 이상의 이름과 수치를 입력하세요. 예) `!추가 홍길동 김철수 5`"
+
+    amount_str = args[-1]
+    if not amount_str.isdigit():
+        return None, "⚠️ 수치는 양의 정수여야 합니다. 예) `!추가 홍길동 김철수 5`"
+    amount = int(amount_str)
+
+    raw_names = args[:-1]
+    names = []
+    for token in raw_names:
+        for part in token.split(","):
+            nm = part.strip()
+            if nm:
+                names.append(nm)
+
+    if not names:
+        return None, "⚠️ 유효한 이름이 없습니다. 예) `!추가 홍길동 김철수 5`"
+
+    # 같은 이름이 여러 번 입력되면 중복 제거(순서 유지)
+    names = list(dict.fromkeys(names))
+    return (names, amount), None
+
 @bot.event
 async def on_ready():
     print(f'✅ Logged in as {bot.user} ({bot.user.id})')
@@ -201,7 +230,7 @@ async def 구매(ctx, 이름: str, *, 아이템문구: str):
 
         item_name, add_qty = parse_name_and_qty(아이템문구)
         if add_qty <= 0:
-            await ctx.send("⚠️ 수량은 1 이상이어야 합니다. 예) `!구매 홍길동 에너지바 2개`")
+            await ctx.send(f"⚠️ 수량은 1 이상이어야 합니다. 예) `!구매 홍길동 에너지바 2개`")
             return
 
         cell_val = sh.cell(row, 6).value  # F열
@@ -234,7 +263,7 @@ async def 사용(ctx, 이름: str, *, 아이템문구: str):
 
         item_name, sub_qty = parse_name_and_qty(아이템문구)
         if sub_qty <= 0:
-            await ctx.send("⚠️ 수량은 1 이상이어야 합니다. 예) `!사용 홍길동 에너지바 2개`")
+            await ctx.send(f"⚠️ 수량은 1 이상이어야 합니다. 예) `!사용 홍길동 에너지바 2개`")
             return
 
         cell_val = sh.cell(row, 6).value  # F열
@@ -302,26 +331,26 @@ def _apply_delta_to_hp(name: str, delta: int):
 @bot.command(name="추첨", help="!추첨 숫자 → 체력값 시트 B6부터 마지막 행까지 이름 중에서 숫자만큼 무작위 추첨합니다. 예) !추첨 3")
 async def 추첨(ctx, 숫자: str):
     if not 숫자.isdigit():
-        await ctx.send("⚠️ 숫자를 입력하세요. 예) `!추첨 3`")
+        await ctx.send(f"⚠️ 숫자를 입력하세요. 예) `!추첨 3`")
         return
 
     k = int(숫자)
     if k <= 0:
-        await ctx.send("⚠️ 1 이상의 숫자를 입력하세요. 예) `!추첨 1`")
+        await ctx.send(f"⚠️ 1 이상의 숫자를 입력하세요. 예) `!추첨 1`")
         return
 
     try:
         sh = ws("체력값")
         colB = sh.col_values(2)  # B열 전체
         if len(colB) < 6:
-            await ctx.send("⚠️ B6 이후 이름 데이터가 없습니다.")
+            await ctx.send(f"⚠️ B6 이후 이름 데이터가 없습니다.")
             return
 
         # B6부터 끝까지, 비어있지 않은 이름만 수집
         candidates = [v.strip() for v in colB[5:] if v and v.strip()]
         total = len(candidates)
         if total == 0:
-            await ctx.send("⚠️ 추첨 대상이 없습니다. (B6 이후가 비어 있음)")
+            await ctx.send(f"⚠️ 추첨 대상이 없습니다. (B6 이후가 비어 있음)")
             return
         if k > total:
             await ctx.send(f"⚠️ 추첨 인원이 대상 수({total}명)를 초과합니다. 더 작은 숫자를 입력하세요.")
@@ -415,7 +444,7 @@ async def 추가(ctx, *args):
     if fail_lines:
         parts.append("\n".join(fail_lines))
     parts.append(timestamp)
-    await ctx.send("\n".join(parts))
+    await ctx.send(f"\n".join(parts))
 
 @bot.command(name="차감", help="!차감 이름1 [이름2 ...] 수치 → 지정된 모든 이름의 체력값을 수치만큼 뺍니다. 예) !차감 홍길동 김철수 3")
 async def 차감(ctx, *args):
@@ -443,7 +472,7 @@ async def 차감(ctx, *args):
     if fail_lines:
         parts.append("\n".join(fail_lines))
     parts.append(timestamp)
-    await ctx.send("\n".join(parts))
+    await ctx.send(f"\n".join(parts))
 
 # ====== 도움말: 고정 순서/설명으로 보기 좋게 출력 ======
 
@@ -489,7 +518,7 @@ async def 도움말(ctx):
         desc = HELP_OVERRIDES.get(name) or (cmd.help or "설명 없음")
         lines.append(f"**!{name}** — {desc}")
 
-    await ctx.send("\n".join(lines))
+    await ctx.send(f"\n".join(lines))
 
 @bot.command(
     name="전체",
@@ -498,12 +527,12 @@ async def 도움말(ctx):
 async def 전체(ctx, 수치: str):
     s = (수치 or "").strip()
     if not (s.startswith("+") or s.startswith("-")):
-        await ctx.send("⚠️ 수치는 + 또는 -로 시작해야 합니다. 예) `!전체 +5` 또는 `!전체 -3`")
+        await ctx.send(f"⚠️ 수치는 + 또는 -로 시작해야 합니다. 예) `!전체 +5` 또는 `!전체 -3`")
         return
     try:
         delta = int(s)
     except ValueError:
-        await ctx.send("⚠️ 수치는 정수여야 합니다. 예) `!전체 +5` 또는 `!전체 -3`")
+        await ctx.send(f"⚠️ 수치는 정수여야 합니다. 예) `!전체 +5` 또는 `!전체 -3`")
         return
 
     try:
@@ -513,7 +542,7 @@ async def 전체(ctx, 수치: str):
         col_d = sh.col_values(4)  # D열 전체 값
         last_row = len(col_d)
         if last_row < 6:
-            await ctx.send("⚠️ D6 이후 데이터가 없습니다.")
+            await ctx.send(f"⚠️ D6 이후 데이터가 없습니다.")
             return
 
         rng = f"D6:D{last_row}"
@@ -838,7 +867,7 @@ class BattleView(View):
 async def 전투(ctx, 플레이어1: str, 플레이어2: str):
     channel_id = ctx.channel.id
     if channel_id in active_battles:
-        await ctx.send("이미 이 채널에서 전투가 진행 중입니다.")
+        await ctx.send(f"이미 이 채널에서 전투가 진행 중입니다.")
         return
 
     first = random.choice([플레이어1, 플레이어2])
